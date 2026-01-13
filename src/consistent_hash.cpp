@@ -36,14 +36,11 @@ std::string ConsistentHash::getNode(const std::string& key) const {
     if (ring_.empty()) {
         return "";
     }
-    
     uint32_t h = hash(key);
     auto it = ring_.lower_bound(h);
-    
     if (it == ring_.end()) {
         it = ring_.begin();
     }
-    
     return it->second;
 }
 
@@ -58,7 +55,6 @@ std::vector<std::string> ConsistentHash::getAllNodes() const {
             seen[pair.second] = true;
         }
     }
-    
     return nodes;
 }
 
@@ -70,6 +66,5 @@ std::map<std::string, int> ConsistentHash::getDistribution(
         std::string node = getNode(key);
         dist[node]++;
     }
-    
     return dist;
 }
