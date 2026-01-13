@@ -12,18 +12,16 @@ using json = nlohmann::json;
 class Gateway {
 public:
     explicit Gateway(const std::vector<std::string>& workers) {
-        // Initialize consistent hash
+        // consistent hash initialization
         for (const auto& worker : workers) {
             hash_ring_.addNode(worker);
-            
-            // Create circuit breaker for each worker
+            // circuit breaker for each worker
             circuit_breakers_[worker] = std::make_unique<CircuitBreaker>(
                 5,   // failure_threshold
                 2,   // success_threshold
                 std::chrono::seconds(30)
             );
-            
-            // Create HTTP client for each worker
+            // HTTP client for each worker
             auto url_parts = parseUrl(worker);
             std::cout << "Parsed URL: " << worker << " -> host=" << url_parts.first 
                       << " port=" << url_parts.second << std::endl;
@@ -31,9 +29,8 @@ public:
             clients_[worker] = std::make_unique<httplib::Client>(
                 url_parts.first, url_parts.second
             );
-            clients_[worker]->set_connection_timeout(5, 0);  // 5 seconds
+            clients_[worker]->set_connection_timeout(5, 0);  
             clients_[worker]->set_read_timeout(5, 0);
-            
             std::cout << "Connected to worker: " << worker << std::endl;
         }
     }
@@ -66,7 +63,6 @@ public:
     json getStats() {
         json stats;
         stats["total_workers"] = hash_ring_.getAllNodes().size();
-        
         json circuit_states = json::array();
         for (const auto& [node, breaker] : circuit_breakers_) {
             json state;
@@ -77,7 +73,6 @@ public:
             circuit_states.push_back(state);
         }
         stats["circuit_breakers"] = circuit_states;
-        
         return stats;
     }
     
