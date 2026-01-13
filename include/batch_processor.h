@@ -23,20 +23,16 @@ public:
     );
     
     ~BatchProcessor();
-    
-    // Process single request (batched internally)
     Response process(const Request& request);
     
     void start();
     void stop();
-    
-    // Metrics
     struct Metrics {
-        std::atomic<int64_t> total_requests{0};
-        std::atomic<int64_t> total_batches{0};
-        std::atomic<int64_t> timeout_batches{0};
-        std::atomic<int64_t> full_batches{0};
-        double avg_batch_size{0.0};
+        int64_t total_requests;
+        int64_t total_batches;
+        int64_t timeout_batches;
+        int64_t full_batches;
+        double avg_batch_size;
     };
     
     Metrics getMetrics() const;
@@ -47,23 +43,22 @@ private:
         std::vector<std::pair<Request, std::promise<Response>>>& batch,
         bool is_timeout
     );
-    
     size_t max_batch_size_;
     std::chrono::milliseconds timeout_;
     BatchCallback callback_;
-    
     std::queue<std::pair<Request, std::promise<Response>>> request_queue_;
     std::mutex queue_mutex_;
     std::condition_variable queue_cv_;
-    
     std::thread worker_thread_;
     std::atomic<bool> running_{false};
-    
-    Metrics metrics_;
+    std::atomic<int64_t> total_requests_{0};
+    std::atomic<int64_t> total_batches_{0};
+    std::atomic<int64_t> timeout_batches_{0};
+    std::atomic<int64_t> full_batches_{0};
     mutable std::mutex metrics_mutex_;
+    double avg_batch_size_{0.0};
 };
 
-// Template implementation
 template<typename Request, typename Response>
 BatchProcessor<Request, Response>::BatchProcessor(
     size_t max_batch_size,
@@ -101,12 +96,9 @@ Response BatchProcessor<Request, Response>::process(const Request& request) {
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
         request_queue_.push({request, std::move(promise)});
-        metrics_.total_requests++;
+        total_requests_++;
     }
-    
     queue_cv_.notify_one();
-    
-    // Wait for result
     return future.get();
 }
 
@@ -114,20 +106,14 @@ template<typename Request, typename Response>
 void BatchProcessor<Request, Response>::processingLoop() {
     std::vector<std::pair<Request, std::promise<Response>>> batch;
     batch.reserve(max_batch_size_);
-    
     while (running_) {
         std::unique_lock<std::mutex> lock(queue_mutex_);
-        
-        // Wait for requests or timeout
         bool timeout = !queue_cv_.wait_for(
             lock,
             timeout_,
             [this] { return !request_queue_.empty() || !running_; }
         );
-        
         if (!running_) break;
-        
-        // Collect batch
         batch.clear();
         while (!request_queue_.empty() && batch.size() < max_batch_size_) {
             batch.push_back(std::move(request_queue_.front()));
@@ -150,34 +136,37 @@ void BatchProcessor<Request, Response>::processBatch(
     if (batch.empty()) return;
     
     try {
-        // Extract requests
         std::vector<Request> requests;
         requests.reserve(batch.size());
         for (auto& item : batch) {
             requests.push_back(item.first);
         }
-        
-        // Process batch
         auto responses = callback_(requests);
-        
-        // Fulfill promises
-        for (size_t i = 0; i < batch.size() && i < responses.size(); ++i) {
-            batch[i].second.set_value(responses[i]);
+        for (size_t i = 0; i < batch.size(); ++i) {
+            if (i < responses.size()) {
+                batch[i].second.set_value(responses[i]);
+            } else {
+                // If callback returned fewer results, fail the remaining ones
+                // rather than letting them hang indefinitely
+                batch[i].second.set_exception(
+                    std::make_exception_ptr(std::runtime_error("No response for batched request"))
+                );
+            }
         }
         
         // Update metrics
-        std::lock_guard<std::mutex> lock(metrics_mutex_);
-        metrics_.total_batches++;
+        total_batches_++;
         
         if (is_timeout) {
-            metrics_.timeout_batches++;
+            timeout_batches_++;
         } else {
-            metrics_.full_batches++;
+            full_batches_++;
         }
         
-        // Update average batch size
-        double prev_total = metrics_.avg_batch_size * (metrics_.total_batches - 1);
-        metrics_.avg_batch_size = (prev_total + batch.size()) / metrics_.total_batches;
+        // Update average batch size (thread-safe)
+        std::lock_guard<std::mutex> lock(metrics_mutex_);
+        int64_t batches = total_batches_.load();
+        avg_batch_size_ = (avg_batch_size_ * (batches - 1) + batch.size()) / batches;
         
     } catch (const std::exception& e) {
         // Set exception for all promises
@@ -195,7 +184,13 @@ template<typename Request, typename Response>
 typename BatchProcessor<Request, Response>::Metrics 
 BatchProcessor<Request, Response>::getMetrics() const {
     std::lock_guard<std::mutex> lock(metrics_mutex_);
-    return metrics_;
+    return Metrics{
+        total_requests_.load(),
+        total_batches_.load(),
+        timeout_batches_.load(),
+        full_batches_.load(),
+        avg_batch_size_
+    };
 }
 
 #endif 

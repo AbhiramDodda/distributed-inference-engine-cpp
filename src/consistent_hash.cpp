@@ -4,7 +4,7 @@
 ConsistentHash::ConsistentHash(int virtual_nodes) : virtual_nodes_(virtual_nodes) {}
 
 uint32_t ConsistentHash::hash(const std::string& key) const {
-    // Simple FNV-1a hash
+    // FNV-1a hash
     uint32_t h = 2166136261u;
     for (char c : key) {
         h ^= static_cast<uint32_t>(c);

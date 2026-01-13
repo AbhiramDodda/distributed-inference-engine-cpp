@@ -3,6 +3,7 @@
 #include <iostream>
 #include <memory>
 #include <map>
+#include <optional>
 #include <httplib.h>
 #include <nlohmann/json.hpp>
 
@@ -24,6 +25,9 @@ public:
             
             // Create HTTP client for each worker
             auto url_parts = parseUrl(worker);
+            std::cout << "Parsed URL: " << worker << " -> host=" << url_parts.first 
+                      << " port=" << url_parts.second << std::endl;
+            
             clients_[worker] = std::make_unique<httplib::Client>(
                 url_parts.first, url_parts.second
             );
@@ -36,21 +40,17 @@ public:
     
     json routeRequest(const json& request) {
         std::string request_id = request["request_id"];
-        
-        // Get target node using consistent hashing
+        // target node using consistent hashing
         std::string target_node = hash_ring_.getNode(request_id);
-        
         if (target_node.empty()) {
             throw std::runtime_error("No workers available");
         }
-        
-        // Try primary node with circuit breaker
+        // primary node with circuit breaker
         auto result = tryNode(target_node, request);
         if (result.has_value()) {
             return *result;
         }
-        
-        // Primary failed, try other nodes
+        // primary failed
         auto all_nodes = hash_ring_.getAllNodes();
         for (const auto& node : all_nodes) {
             if (node != target_node) {
@@ -60,7 +60,6 @@ public:
                 }
             }
         }
-        
         throw std::runtime_error("All workers failed or circuit breakers open");
     }
     
@@ -88,16 +87,11 @@ private:
         if (breaker_it == circuit_breakers_.end()) {
             return std::nullopt;
         }
-        
         auto& breaker = breaker_it->second;
-        
-        // Check circuit breaker
         if (!breaker->allowRequest()) {
             std::cout << "Circuit breaker OPEN for " << node << ", skipping" << std::endl;
             return std::nullopt;
         }
-        
-        // Try request
         auto client_it = clients_.find(node);
         if (client_it == clients_.end()) {
             breaker->recordFailure();
@@ -105,16 +99,29 @@ private:
         }
         
         try {
+            std::cout << "Sending request to " << node << std::endl;
+            
             auto result = client_it->second->Post(
                 "/infer",
                 request.dump(),
                 "application/json"
             );
-            
             if (result && result->status == 200) {
+                std::cout << "Success from " << node << std::endl;
                 breaker->recordSuccess();
                 return json::parse(result->body);
             } else {
+                if (result) {
+                    std::cerr << "Request to " << node << " failed with status: " 
+                              << result->status << std::endl;
+                    if (!result->body.empty()) {
+                        std::cerr << "Response body: " << result->body << std::endl;
+                    }
+                } else {
+                    std::cerr << "Request to " << node << " failed: no response" << std::endl;
+                    auto err = result.error();
+                    std::cerr << "Error: " << httplib::to_string(err) << std::endl;
+                }
                 breaker->recordFailure();
                 return std::nullopt;
             }
@@ -126,21 +133,28 @@ private:
     }
     
     std::pair<std::string, int> parseUrl(const std::string& url) {
-        // Simple URL parser for localhost:port format
-        size_t colon_pos = url.find_last_of(':');
-        if (colon_pos == std::string::npos) {
-            return {"localhost", 8080};
-        }
-        
-        std::string host = url.substr(0, colon_pos);
-        int port = std::stoi(url.substr(colon_pos + 1));
-        
-        // Remove http:// if present
-        size_t proto_pos = host.find("://");
+        std::string cleaned_url = url;
+        size_t proto_pos = cleaned_url.find("://");
         if (proto_pos != std::string::npos) {
-            host = host.substr(proto_pos + 3);
+            cleaned_url = cleaned_url.substr(proto_pos + 3);
         }
+        size_t colon_pos = cleaned_url.find_last_of(':');
         
+        if (colon_pos == std::string::npos) {
+            return {cleaned_url, 8080};
+        }
+        std::string host = cleaned_url.substr(0, colon_pos);
+        std::string port_str = cleaned_url.substr(colon_pos + 1);
+        size_t slash_pos = port_str.find('/');
+        if (slash_pos != std::string::npos) {
+            port_str = port_str.substr(0, slash_pos);
+        }
+        int port = 8080;  // default
+        try {
+            port = std::stoi(port_str);
+        } catch (...) {
+            std::cerr << "Warning: Invalid port '" << port_str << "', using 8080" << std::endl;
+        }
         return {host, port};
     }
     
@@ -152,6 +166,7 @@ private:
 int main(int argc, char** argv) {
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <worker1:port> [worker2:port] ..." << std::endl;
+        std::cerr << "Example: " << argv[0] << " localhost:8001 localhost:8002 localhost:8003" << std::endl;
         return 1;
     }
     
@@ -162,8 +177,7 @@ int main(int argc, char** argv) {
     
     Gateway gateway(workers);
     httplib::Server server;
-    
-    // Inference endpoint
+    // inference endpoint
     server.Post("/infer", [&gateway](const httplib::Request& req, httplib::Response& res) {
         try {
             auto request = json::parse(req.body);
@@ -177,19 +191,15 @@ int main(int argc, char** argv) {
             res.set_content(error.dump(), "application/json");
         }
     });
-    
-    // Stats endpoint
+    // stats endpoint
     server.Get("/stats", [&gateway](const httplib::Request&, httplib::Response& res) {
         auto stats = gateway.getStats();
         res.set_content(stats.dump(), "application/json");
     });
-    
     std::cout << "Gateway listening on port 8000" << std::endl;
     std::cout << "Workers: " << workers.size() << std::endl;
     std::cout << "Circuit breakers enabled" << std::endl;
     std::cout << "Ready!" << std::endl;
-    
     server.listen("0.0.0.0", 8000);
-    
     return 0;
 }

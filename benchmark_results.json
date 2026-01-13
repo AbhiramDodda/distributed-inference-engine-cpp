@@ -1,0 +1,19 @@
+{
+  "total_requests": 1000,
+  "successful": 0,
+  "failed": 1000,
+  "total_time": 2.3704934120178223,
+  "throughput": 0.0,
+  "latency": {
+    "mean": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0
+  },
+  "cache": {
+    "hits": 0,
+    "misses": 0,
+    "hit_rate": 0
+  },
+  "node_distribution": {}
+}
