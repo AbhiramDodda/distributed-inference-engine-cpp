@@ -3,42 +3,119 @@
 #include <iostream>
 #include <memory>
 #include <map>
+#include <vector>
+#include <mutex>
+#include <condition_variable>
 #include <optional>
+#include <utility>
+#include <cstdint>
+#include <cstring>
 #include <httplib.h>
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
 
+// A thread-safe pool of httplib::Client connections for a single worker.
+// httplib::Client is not safe for concurrent use, so each in-flight request
+// borrows its own client from the pool and returns it when done.
+class ClientPool {
+public:
+    ClientPool(std::string host, int port, size_t size)
+        : host_(std::move(host)), port_(port) {
+        for (size_t i = 0; i < size; ++i) {
+            available_.push_back(makeClient());
+        }
+    }
+
+    // RAII handle: forwards to the borrowed client and returns it to the pool
+    // on destruction.
+    class Handle {
+    public:
+        Handle(ClientPool* pool, std::unique_ptr<httplib::Client> client)
+            : pool_(pool), client_(std::move(client)) {}
+        Handle(Handle&& other) noexcept
+            : pool_(other.pool_), client_(std::move(other.client_)) {
+            other.pool_ = nullptr;
+        }
+        Handle(const Handle&) = delete;
+        Handle& operator=(const Handle&) = delete;
+        ~Handle() {
+            if (pool_ && client_) pool_->release(std::move(client_));
+        }
+        httplib::Client* operator->() { return client_.get(); }
+
+    private:
+        ClientPool* pool_;
+        std::unique_ptr<httplib::Client> client_;
+    };
+
+    Handle acquire() {
+        std::unique_lock<std::mutex> lock(mutex_);
+        cv_.wait(lock, [this] { return !available_.empty(); });
+        auto client = std::move(available_.back());
+        available_.pop_back();
+        return Handle(this, std::move(client));
+    }
+
+private:
+    std::unique_ptr<httplib::Client> makeClient() {
+        auto client = std::make_unique<httplib::Client>(host_, port_);
+        client->set_connection_timeout(5, 0);  // 5 seconds
+        client->set_read_timeout(5, 0);
+        client->set_keep_alive(true);
+        return client;
+    }
+
+    void release(std::unique_ptr<httplib::Client> client) {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            available_.push_back(std::move(client));
+        }
+        cv_.notify_one();
+    }
+
+    std::string host_;
+    int port_;
+    std::mutex mutex_;
+    std::condition_variable cv_;
+    std::vector<std::unique_ptr<httplib::Client>> available_;
+};
+
 class Gateway {
 public:
     explicit Gateway(const std::vector<std::string>& workers) {
-        // consistent hash initialization
+        // Initialize consistent hash
         for (const auto& worker : workers) {
             hash_ring_.addNode(worker);
-            // circuit breaker for each worker
+            
+            // Create circuit breaker for each worker
             circuit_breakers_[worker] = std::make_unique<CircuitBreaker>(
                 5,   // failure_threshold
                 2,   // success_threshold
                 std::chrono::seconds(30)
             );
-            // HTTP client for each worker
-            auto url_parts = parseUrl(worker);
-            std::cout << "Parsed URL: " << worker << " -> host=" << url_parts.first 
-                      << " port=" << url_parts.second << std::endl;
             
-            clients_[worker] = std::make_unique<httplib::Client>(
-                url_parts.first, url_parts.second
+            // Create a pool of HTTP clients for each worker. httplib::Client
+            // is not thread-safe, so concurrent gateway requests each borrow
+            // their own connection from the pool.
+            auto url_parts = parseUrl(worker);
+            std::cout << "Parsed URL: " << worker << " -> host=" << url_parts.first
+                      << " port=" << url_parts.second << std::endl;
+
+            clients_[worker] = std::make_unique<ClientPool>(
+                url_parts.first, url_parts.second, kClientPoolSize
             );
-            clients_[worker]->set_connection_timeout(5, 0);  
-            clients_[worker]->set_read_timeout(5, 0);
+
             std::cout << "Connected to worker: " << worker << std::endl;
         }
     }
     
     json routeRequest(const json& request) {
-        std::string request_id = request["request_id"];
-        // target node using consistent hashing
-        std::string target_node = hash_ring_.getNode(request_id);
+        // Route by a hash of the input data (not request_id) so that identical
+        // inputs always map to the same worker, maximizing cache hits and
+        // avoiding redundant copies of the same result across workers.
+        std::string routing_key = computeRoutingKey(request);
+        std::string target_node = hash_ring_.getNode(routing_key);
         if (target_node.empty()) {
             throw std::runtime_error("No workers available");
         }
@@ -63,6 +140,7 @@ public:
     json getStats() {
         json stats;
         stats["total_workers"] = hash_ring_.getAllNodes().size();
+        
         json circuit_states = json::array();
         for (const auto& [node, breaker] : circuit_breakers_) {
             json state;
@@ -73,10 +151,33 @@ public:
             circuit_states.push_back(state);
         }
         stats["circuit_breakers"] = circuit_states;
+        
         return stats;
     }
     
 private:
+    // Derive a stable ring key from the request's input data. Identical inputs
+    // produce identical keys, so consistent hashing sends them to the same
+    // worker. Falls back to request_id if input_data is absent.
+    static std::string computeRoutingKey(const json& request) {
+        auto it = request.find("input_data");
+        if (it == request.end() || !it->is_array()) {
+            return request.value("request_id", std::string{});
+        }
+        // FNV-1a over the raw float bits of each element. We narrow to float to
+        // match how the worker stores its cache key (std::vector<float>), so the
+        // routing and caching views of "the same input" stay consistent.
+        uint64_t h = 1469598103934665603ull;  // FNV-1a 64-bit offset basis
+        for (const auto& elem : *it) {
+            float f = elem.get<float>();
+            uint32_t bits;
+            std::memcpy(&bits, &f, sizeof(bits));
+            h ^= bits;
+            h *= 1099511628211ull;  // FNV-1a 64-bit prime
+        }
+        return std::to_string(h);
+    }
+
     std::optional<json> tryNode(const std::string& node, const json& request) {
         auto breaker_it = circuit_breakers_.find(node);
         if (breaker_it == circuit_breakers_.end()) {
@@ -95,8 +196,9 @@ private:
         
         try {
             std::cout << "Sending request to " << node << std::endl;
-            
-            auto result = client_it->second->Post(
+
+            auto client = client_it->second->acquire();
+            auto result = client->Post(
                 "/infer",
                 request.dump(),
                 "application/json"
@@ -153,9 +255,12 @@ private:
         return {host, port};
     }
     
+    // Number of concurrent connections kept open per worker.
+    static constexpr size_t kClientPoolSize = 32;
+
     ConsistentHash hash_ring_;
     std::map<std::string, std::unique_ptr<CircuitBreaker>> circuit_breakers_;
-    std::map<std::string, std::unique_ptr<httplib::Client>> clients_;
+    std::map<std::string, std::unique_ptr<ClientPool>> clients_;
 };
 
 int main(int argc, char** argv) {

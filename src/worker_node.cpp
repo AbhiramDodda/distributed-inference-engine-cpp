@@ -52,18 +52,21 @@ public:
         
         std::string request_id = request["request_id"];
         std::vector<float> input_data = request["input_data"];
-        
+
         // Check cache first
+        auto cache_start = std::chrono::high_resolution_clock::now();
         auto cached = cache_.get(input_data);
         if (cached.has_value()) {
+            auto cache_end = std::chrono::high_resolution_clock::now();
             cache_hits_++;
             json response;
             response["request_id"] = request_id;
             response["output_data"] = *cached;
             response["node_id"] = node_id_;
             response["cached"] = true;
-            response["inference_time_us"] = 50;  // Cache hit is very fast
-            
+            response["inference_time_us"] = std::chrono::duration_cast<
+                std::chrono::microseconds>(cache_end - cache_start).count();
+
             return response;
         }
         

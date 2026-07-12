@@ -9,6 +9,8 @@
 #include <vector>
 #include <functional>
 #include <atomic>
+#include <cstdint>
+#include <cstring>
 
 template<typename Key, typename Value, typename Hash = std::hash<Key>>
 class LRUCache {
@@ -83,15 +85,19 @@ private:
 // hash for vector<float> to use as cache key
 struct VectorHash {
     size_t operator()(const std::vector<float>& vec) const {
-        size_t hash = 0;
-        std::hash<float> hasher;
-        if (!vec.empty()) {
-            hash ^= hasher(vec[0]) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-            hash ^= hasher(vec[vec.size()/2]) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-            hash ^= hasher(vec.back()) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+        // FNV-1a over the raw bits of every element. Hashing the whole vector
+        // (rather than sampling a few elements) keeps distinct inputs from
+        // colliding into the same bucket, which would otherwise force an O(n)
+        // full-vector equality check on every lookup. Matches the routing-key
+        // hash used by the gateway so the two views of "the same input" agree.
+        uint64_t h = 1469598103934665603ull;  // FNV-1a 64-bit offset basis
+        for (float f : vec) {
+            uint32_t bits;
+            std::memcpy(&bits, &f, sizeof(bits));
+            h ^= bits;
+            h *= 1099511628211ull;  // FNV-1a 64-bit prime
         }
-        
-        return hash;
+        return static_cast<size_t>(h);
     }
 };
 

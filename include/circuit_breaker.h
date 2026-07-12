@@ -4,7 +4,6 @@
 #include <string>
 #include <chrono>
 #include <mutex>
-#include <atomic>
 
 enum class CircuitState {
     CLOSED,     
@@ -28,13 +27,10 @@ public:
     int getSuccessCount() const;
     
 private:
-    void transitionToOpen();
-    void transitionToHalfOpen();
-    void transitionToClosed();
-    bool shouldAttemptReset();
-    std::atomic<CircuitState> state_;
-    std::atomic<int> failure_count_;
-    std::atomic<int> success_count_;
+    // All fields below are guarded by mutex_.
+    CircuitState state_;
+    int failure_count_;
+    int success_count_;
     int failure_threshold_;
     int success_threshold_;
     std::chrono::seconds timeout_;

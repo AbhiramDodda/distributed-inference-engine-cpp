@@ -9,7 +9,7 @@ A high-performance distributed inference system for ONNX models featuring consis
 
 ## Features
 
-- **Consistent Hashing**: Distributes requests across workers using virtual nodes for balanced load distribution
+- **Consistent Hashing**: Routes each request by a hash of its input data (via virtual nodes) so identical inputs always reach the same worker, maximizing cache locality across the cluster
 - **LRU Cache**: Caches inference results to reduce computation for repeated requests
 - **Dynamic Batching**: Automatically batches concurrent requests to improve throughput
 - **Circuit Breakers**: Monitors worker health and automatically routes around failed nodes
@@ -271,33 +271,79 @@ python3 benchmark.py --cache-test --requests 100
 --no-stats          Skip system statistics output
 ```
 
+## Recent Improvements
+
+- **Input-based routing for cache locality**: the gateway now routes on a hash of
+  the request's `input_data` (FNV-1a over the float bits) instead of `request_id`.
+  Identical inputs always reach the same worker, so each distinct result is computed
+  and cached once cluster-wide instead of being duplicated across workers.
+- **Thread-safe worker connections**: each worker is backed by a pool of keep-alive
+  HTTP clients. Concurrent gateway requests borrow their own connection (RAII),
+  removing a data race on the previously shared, non-thread-safe `httplib::Client`.
+- **Honest cache-hit metrics**: `inference_time_us` on a cache hit is now the actual
+  measured lookup time (single-digit microseconds) rather than a hardcoded constant.
+- **Stronger cache hashing**: `VectorHash` hashes the entire input vector rather than
+  sampling three elements, eliminating avoidable bucket collisions (and the O(n)
+  full-vector comparisons they triggered).
+- **Circuit breaker synchronization cleanup**: all breaker state is guarded by a
+  single mutex with consistent locking in every accessor, removing redundant and
+  inconsistently-used atomics.
+
 ## Performance Results
 
-Based on benchmark results with 10,000 requests and 50 concurrent threads:
+Measured with the gateway and all three workers running locally on a single host
+(CPU inference via ONNX Runtime). Because the load generator (`benchmark.py`) shares
+the machine with the servers, absolute throughput is bounded by the Python client
+rather than the inference engine — see the note below.
 
-### Throughput
-- Total requests: 10,000
+### 1,000,000 requests / 500 threads
+
+Throughput
+- Total requests: 1,000,000
+- Success rate: 100.00% (0 failures)
+- Total time: 2359.18s
+- Requests/sec: 423.88
+
+Latency
+- Mean: 1168.51ms
+- Median: 1162.19ms
+- P90: 1867.70ms
+- P95: 2033.39ms
+- P99: 2318.40ms
+
+### 10,000 requests / 50 threads
+
+Throughput
 - Success rate: 100.00%
-- Total time: 19.13s
-- Requests/sec: 522.64
+- Requests/sec: 262.77
 
-### Latency
-- Mean: 86.82ms
-- Median: 84.60ms
-- P90: 124.49ms
-- P95: 137.59ms
-- P99: 164.29ms
+Latency
+- Mean: 187.32ms
+- Median: 191.08ms
+- P90: 226.22ms
+- P99: 357.86ms
 
-### Cache Performance
-- Worker 1: 99.77% hit rate (4,681 requests)
-- Worker 2: 99.60% hit rate (2,471 requests)
-- Worker 3: 99.74% hit rate (3,853 requests)
+### Cache & Load Distribution (input-based routing)
 
-### Load Distribution
-Consistent hashing distributed requests across workers:
-- Worker 1: 46.81% of requests
-- Worker 2: 24.71% of requests
-- Worker 3: 38.53% of requests
+Requests are routed by a hash of the input data, so identical inputs always map to
+the same worker. Across the benchmark's 10 distinct inputs, cache entries are
+partitioned with no duplication (1M / 500-thread run):
+
+| Worker   | Requests | Cache entries | Hit rate |
+|----------|----------|---------------|----------|
+| worker_1 | 300,000  | 3             | 100.00%  |
+| worker_2 | 400,000  | 4             | 99.99%   |
+| worker_3 | 300,000  | 3             | 99.99%   |
+
+The 10 distinct results are stored once cluster-wide (3 + 4 + 3) rather than being
+replicated across every worker.
+
+> **Note:** the ~424 req/s ceiling is client-bound, not server-bound. With 500 client
+> threads at ~424 req/s, Little's Law gives ~1.18s mean latency, which matches the
+> measured mean — each thread spends its time in the queue it creates. The C++ path
+> serves cache hits in single-digit microseconds (`total_batches` stays in single
+> digits, so only the first occurrence of each input runs real inference). Measuring
+> true server throughput requires a keep-alive/async load client.
 
 ## Configuration
 
@@ -350,7 +396,7 @@ Wait 30 seconds for automatic reset, or restart the gateway.
 
 ### Low Cache Hit Rate
 
-Ensure request inputs are identical for cache hits. The cache uses vector hashing that samples first, middle, and last elements.
+Ensure request inputs are identical for cache hits. The cache hashes the full input vector (FNV-1a over the float bits), and the gateway routes by that same hash, so identical inputs consistently reach the same worker's cache.
 
 ### CUDA Not Loading
 

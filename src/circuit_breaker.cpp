@@ -47,7 +47,8 @@ void CircuitBreaker::recordFailure() {
 }
 
 CircuitState CircuitBreaker::getState() const {
-    return state_.load();
+    std::lock_guard<std::mutex> lock(mutex_);
+    return state_;
 }
 
 std::string CircuitBreaker::getStateString() const {
@@ -61,7 +62,8 @@ std::string CircuitBreaker::getStateString() const {
 }
 
 int CircuitBreaker::getSuccessCount() const {
-    return success_count_.load();
+    std::lock_guard<std::mutex> lock(mutex_);
+    return success_count_;
 }
 
 int CircuitBreaker::getFailureCount() const {
