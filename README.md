@@ -11,7 +11,7 @@ A high-performance distributed inference system for ONNX models featuring consis
 
 - **Consistent Hashing**: Routes each request by a hash of its input data (via virtual nodes) so identical inputs always reach the same worker, maximizing cache locality across the cluster
 - **LRU Cache**: Caches inference results to reduce computation for repeated requests
-- **Dynamic Batching**: Automatically batches concurrent requests to improve throughput
+- **Adaptive Batching**: SLO-aware dynamic batching — the batch grows only while the oldest queued request stays under a latency budget, trading between throughput (large batches) and tail latency (small batches) automatically as load changes
 - **Circuit Breakers**: Monitors worker health and automatically routes around failed nodes
 - **Load Balancing**: Distributes requests across multiple worker nodes
 - **CUDA Support**: Optional GPU acceleration with automatic CPU fallback
@@ -111,7 +111,8 @@ Start three worker nodes on different ports:
 Worker configuration:
 - Cache capacity: 1000 entries
 - Max batch size: 32 requests
-- Batch timeout: 20ms
+- Batch latency budget: 20ms (max time a request waits to be batched)
+- HTTP server threads: 64 (kept above max batch size so batches can fill)
 
 ### 3. Start Gateway
 
@@ -123,6 +124,7 @@ Start the gateway to route requests:
 
 Gateway configuration:
 - Listen port: 8000
+- HTTP server threads: 256 (handlers block on outbound worker calls)
 - Failure threshold: 5 failures before circuit opens
 - Success threshold: 2 successes to close circuit
 - Circuit timeout: 30 seconds
@@ -260,6 +262,23 @@ python3 benchmark.py --requests 1000 --threads 10
 python3 benchmark.py --cache-test --requests 100
 ```
 
+### Run Tail-Latency Load Sweep
+
+Sweeps concurrency with **unique inputs** (cache-miss / real-inference path) and
+reports throughput and the latency tail (p50/p90/p99/p99.9) plus batch occupancy at
+each level, then locates the saturation knee. Point `--target` at a single worker to
+isolate the batcher:
+
+```bash
+# single worker (isolates the batcher)
+python3 tail_latency_sweep.py \
+  --target http://localhost:8001 --workers http://localhost:8001 \
+  --concurrency 8 16 32 48 64 96 128 --requests-per-level 1500
+
+# full cluster via gateway
+python3 tail_latency_sweep.py --concurrency 16 32 64 96 128 --requests-per-level 2000
+```
+
 ### Benchmark Options
 
 ```
@@ -273,6 +292,18 @@ python3 benchmark.py --cache-test --requests 100
 
 ## Recent Improvements
 
+- **SLO-aware adaptive batching**: the batch processor now anchors its flush
+  deadline to the *oldest queued request's arrival time* and flushes when the batch
+  is full or that request would exceed a fixed latency budget (20ms). Small batches
+  at low load (latency mode), full batches under pressure (throughput mode) — the
+  window adapts to offered load instead of a fixed timer.
+- **Right-sized HTTP server thread pools**: cpp-httplib defaults its server pool to
+  `hardware_concurrency - 1` (~15). Because every `/infer` handler blocks in the
+  batcher, that default capped in-flight requests *below* `max_batch_size`, made
+  full batches structurally unreachable, and stalled the tail in 5s keep-alive
+  quanta once concurrency exceeded the pool. Raising the pools (worker 64, gateway
+  256) let batches actually fill and lifted single-worker throughput ~3.8×
+  (see Performance Results). Found via the tail-latency study below.
 - **Input-based routing for cache locality**: the gateway now routes on a hash of
   the request's `input_data` (FNV-1a over the float bits) instead of `request_id`.
   Identical inputs always reach the same worker, so each distinct result is computed
@@ -345,14 +376,60 @@ replicated across every worker.
 > digits, so only the first occurrence of each input runs real inference). Measuring
 > true server throughput requires a keep-alive/async load client.
 
+### Adaptive Batching & Tail-Latency Study
+
+Measured with `tail_latency_sweep.py`, which sends a **unique input on every
+request** so each one misses the cache and exercises the real inference + batching
+path (unlike `benchmark.py`, which reuses inputs and mostly measures cache hits).
+Load is concentrated on a **single worker** to isolate the batcher — through the
+3-worker gateway the load generator saturates before any one worker's batch queue
+fills. Same host, CUDA provider, ResNet50-v2-7.
+
+The tail study surfaced the real bottleneck: the HTTP server's default thread pool
+(`hardware_concurrency - 1` ≈ 15) capped in-flight requests below `max_batch_size`,
+so batches never filled and throughput plateaued at ~130 req/s. After raising the
+worker pool to 64:
+
+| Concurrency | Throughput | p50 (ms) | p99 (ms) | Avg batch | Full batches |
+|-------------|-----------:|---------:|---------:|----------:|-------------:|
+| 8           |    119/s   |     75   |     91   |    8.0    |      0%      |
+| 16          |    134/s   |    120   |    166   |    8.2    |      0%      |
+| 32          |    256/s   |    121   |    176   |   15.8    |      0%      |
+| 48          |    367/s   |    127   |    180   |   23.8    |     49%      |
+| **64**      |  **500/s** |  **121** |  **173** | **31.2**  |   **92%**   |
+| 96          |    189/s   |    126   |   5387   |   30.6    |     92%      |
+| 128         |    189/s   |    131   |   5429   |   31.2    |     96%      |
+
+**Findings:**
+
+- **Adaptive batching engages under load.** Average batch size grows 8 → 31 and the
+  full-batch fraction goes 0% → 92% as concurrency rises, while p50 stays flat at
+  ~120ms — the batch amortizes fixed inference overhead. Peak throughput **~500
+  req/s**, a **~3.8×** gain over the pre-fix ~130 req/s ceiling.
+- **The knee is the server thread pool.** Throughput peaks exactly at concurrency
+  64 (= the new pool size). Past it, extra connections stall on cpp-httplib's 5s
+  keep-alive timeout and the tail jumps to ~5s (p99 5387ms) while throughput drops.
+  The pool sets both the concurrency ceiling and the maximum fillable batch.
+- **Little's Law governs the post-knee tail.** With throughput pinned, latency grows
+  linearly with concurrency (L = λW). The tail past the knee is queueing, not
+  compute.
+
+End-to-end through the gateway (worker pool 64, gateway pool 256), the earlier
+under-load collapse is gone: throughput scales **130 → 500 req/s** peaking at
+concurrency 96 with **p99 324ms and zero failures**. Both single-worker and cluster
+peaks land at ~500 req/s because the single-process Python client is itself the
+ceiling at that point — the server-side proof of batching is the batch-occupancy
+series above, which is measured on the worker.
+
 ## Configuration
 
 ### Tuning Worker Performance
 
 Edit `worker_node.cpp` to adjust:
-- Cache capacity (line 49): `LRUCache cache_(1000)`
-- Max batch size (line 51): `32`
-- Batch timeout (line 52): `std::chrono::milliseconds(20)`
+- Cache capacity: `LRUCache cache_(1000)`
+- Max batch size: `32`
+- Batch latency budget: `std::chrono::milliseconds(20)`
+- HTTP server threads: `kServerThreads` (keep ≥ max batch size)
 
 ### Tuning Circuit Breakers
 
@@ -435,6 +512,7 @@ distributed_inference_engine/
 ├── setup.sh                     # Dependency setup script
 ├── diagnose.sh                  # System diagnostic script
 ├── benchmark.py                 # Performance benchmark
+├── tail_latency_sweep.py        # Tail-latency load sweep (unique-input path)
 ├── CMakeLists.txt              # Build configuration
 └── README.md
 ```

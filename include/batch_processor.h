@@ -15,38 +15,50 @@ template<typename Request, typename Response>
 class BatchProcessor {
 public:
     using BatchCallback = std::function<std::vector<Response>(const std::vector<Request>&)>;
-    
+
+    // `latency_budget` is the maximum time any request may sit in the queue
+    // before its batch is flushed. See processingLoop() for the SLO-aware
+    // batching policy.
     BatchProcessor(
         size_t max_batch_size,
-        std::chrono::milliseconds timeout,
+        std::chrono::milliseconds latency_budget,
         BatchCallback callback
     );
-    
+
     ~BatchProcessor();
     Response process(const Request& request);
-    
+
     void start();
     void stop();
     struct Metrics {
         int64_t total_requests;
         int64_t total_batches;
-        int64_t timeout_batches;
-        int64_t full_batches;
+        int64_t timeout_batches;  // batches flushed at the SLO deadline (partial)
+        int64_t full_batches;     // batches flushed because they hit max size
         double avg_batch_size;
     };
-    
+
     Metrics getMetrics() const;
-    
+
 private:
+    // A queued request carries the promise its caller is blocked on plus the
+    // time it was enqueued, so the batching loop can bound each request's
+    // queueing latency against a fixed budget.
+    struct QueuedRequest {
+        Request request;
+        std::promise<Response> promise;
+        std::chrono::steady_clock::time_point arrival;
+    };
+
     void processingLoop();
     void processBatch(
-        std::vector<std::pair<Request, std::promise<Response>>>& batch,
-        bool is_timeout
+        std::vector<QueuedRequest>& batch,
+        bool is_deadline_flush
     );
     size_t max_batch_size_;
-    std::chrono::milliseconds timeout_;
+    std::chrono::milliseconds latency_budget_;
     BatchCallback callback_;
-    std::queue<std::pair<Request, std::promise<Response>>> request_queue_;
+    std::queue<QueuedRequest> request_queue_;
     std::mutex queue_mutex_;
     std::condition_variable queue_cv_;
     std::thread worker_thread_;
@@ -62,10 +74,10 @@ private:
 template<typename Request, typename Response>
 BatchProcessor<Request, Response>::BatchProcessor(
     size_t max_batch_size,
-    std::chrono::milliseconds timeout,
+    std::chrono::milliseconds latency_budget,
     BatchCallback callback
 ) : max_batch_size_(max_batch_size),
-    timeout_(timeout),
+    latency_budget_(latency_budget),
     callback_(callback) {}
 
 template<typename Request, typename Response>
@@ -92,10 +104,14 @@ template<typename Request, typename Response>
 Response BatchProcessor<Request, Response>::process(const Request& request) {
     std::promise<Response> promise;
     std::future<Response> future = promise.get_future();
-    
+
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
-        request_queue_.push({request, std::move(promise)});
+        request_queue_.push(QueuedRequest{
+            request,
+            std::move(promise),
+            std::chrono::steady_clock::now()
+        });
         total_requests_++;
     }
     queue_cv_.notify_one();
@@ -104,75 +120,94 @@ Response BatchProcessor<Request, Response>::process(const Request& request) {
 
 template<typename Request, typename Response>
 void BatchProcessor<Request, Response>::processingLoop() {
-    std::vector<std::pair<Request, std::promise<Response>>> batch;
+    std::vector<QueuedRequest> batch;
     batch.reserve(max_batch_size_);
     while (running_) {
         std::unique_lock<std::mutex> lock(queue_mutex_);
-        bool timeout = !queue_cv_.wait_for(
-            lock,
-            timeout_,
-            [this] { return !request_queue_.empty() || !running_; }
-        );
+
+        // Block until there is at least one request to serve (or shutdown).
+        queue_cv_.wait(lock, [this] {
+            return !request_queue_.empty() || !running_;
+        });
         if (!running_) break;
+
+        // Anchor the flush deadline to the OLDEST waiting request's arrival
+        // time, not to when this loop happened to start waiting. This is the
+        // SLO-aware part: no request's queueing latency can exceed the budget,
+        // even if the worker was busy running the previous batch when it
+        // arrived (in which case the deadline is already in the past and we
+        // flush immediately, draining the backlog).
+        auto deadline = request_queue_.front().arrival + latency_budget_;
+
+        // Grow the batch until it fills or the deadline passes. Under high load
+        // the queue reaches max_batch_size before the deadline (throughput
+        // mode: large, full batches). Under low load we flush a small batch the
+        // instant the oldest request would blow its budget (latency mode). The
+        // effective batching window is therefore adaptive to offered load.
+        queue_cv_.wait_until(lock, deadline, [this] {
+            return request_queue_.size() >= max_batch_size_ || !running_;
+        });
+
         batch.clear();
         while (!request_queue_.empty() && batch.size() < max_batch_size_) {
             batch.push_back(std::move(request_queue_.front()));
             request_queue_.pop();
         }
-        
+
         lock.unlock();
-        
+
         if (!batch.empty()) {
-            processBatch(batch, timeout);
+            bool full = batch.size() >= max_batch_size_;
+            processBatch(batch, /*is_deadline_flush=*/!full);
         }
     }
 }
 
 template<typename Request, typename Response>
 void BatchProcessor<Request, Response>::processBatch(
-    std::vector<std::pair<Request, std::promise<Response>>>& batch,
-    bool is_timeout
+    std::vector<QueuedRequest>& batch,
+    bool is_deadline_flush
 ) {
     if (batch.empty()) return;
-    
+
     try {
         std::vector<Request> requests;
         requests.reserve(batch.size());
         for (auto& item : batch) {
-            requests.push_back(item.first);
+            requests.push_back(item.request);
         }
         auto responses = callback_(requests);
         for (size_t i = 0; i < batch.size(); ++i) {
             if (i < responses.size()) {
-                batch[i].second.set_value(responses[i]);
+                batch[i].promise.set_value(responses[i]);
             } else {
                 // If callback returned fewer results, fail the remaining ones
                 // rather than letting them hang indefinitely
-                batch[i].second.set_exception(
+                batch[i].promise.set_exception(
                     std::make_exception_ptr(std::runtime_error("No response for batched request"))
                 );
             }
         }
-        
+
         // Update metrics
         total_batches_++;
-        
-        if (is_timeout) {
+
+        if (is_deadline_flush) {
             timeout_batches_++;
         } else {
             full_batches_++;
         }
-        
+
         // Update average batch size (thread-safe)
         std::lock_guard<std::mutex> lock(metrics_mutex_);
         int64_t batches = total_batches_.load();
         avg_batch_size_ = (avg_batch_size_ * (batches - 1) + batch.size()) / batches;
-        
+
     } catch (const std::exception& e) {
         // Set exception for all promises
         for (auto& item : batch) {
             try {
-                item.second.set_exception(std::current_exception());
+                item.promise.set_exception(std::current_exception());
             } catch (...) {
                 // Promise already set or moved
             }
@@ -181,7 +216,7 @@ void BatchProcessor<Request, Response>::processBatch(
 }
 
 template<typename Request, typename Response>
-typename BatchProcessor<Request, Response>::Metrics 
+typename BatchProcessor<Request, Response>::Metrics
 BatchProcessor<Request, Response>::getMetrics() const {
     std::lock_guard<std::mutex> lock(metrics_mutex_);
     return Metrics{
@@ -193,4 +228,4 @@ BatchProcessor<Request, Response>::getMetrics() const {
     };
 }
 
-#endif 
+#endif

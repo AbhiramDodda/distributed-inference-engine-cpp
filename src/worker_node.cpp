@@ -11,6 +11,10 @@
 
 using json = nlohmann::json;
 
+// HTTP server worker threads. Kept above the batch processor's max_batch_size
+// (32) so that enough /infer handlers can be in flight to actually fill a batch.
+static constexpr size_t kServerThreads = 64;
+
 // request/response types for batch processor
 struct InferenceRequest {
     std::string request_id;
@@ -173,6 +177,14 @@ int main(int argc, char** argv) {
     std::cout << "Using model: " << model_path << std::endl;
     WorkerNode worker(node_id, port, model_path);
     httplib::Server server;
+    // cpp-httplib's default server thread pool is hardware_concurrency-1 (~15).
+    // Each /infer handler blocks in the batch processor waiting for its result,
+    // so that default caps the number of requests that can be queued for
+    // batching at once -- below max_batch_size (32), which makes full batches
+    // structurally unreachable and stalls the tail in 5s keep-alive quanta once
+    // concurrency exceeds the pool. Size the pool above the batch size so the
+    // batcher can actually fill and the server admits real concurrency.
+    server.new_task_queue = [] { return new httplib::ThreadPool(kServerThreads); };
     // inference endpoint
     server.Post("/infer", [&worker](const httplib::Request& req, httplib::Response& res) {
         try {

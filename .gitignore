@@ -15,6 +15,14 @@ worker_node
 gateway
 
 distributed_inference/
+
+# Local performance investigation notes and sweep outputs (not for the repo)
+ANALYSIS.md
+sweep_results.json
+sweep_results.csv
+sweep_single_worker.json
+sweep_single_worker.csv
+
 venv/
 env/
 ENV/

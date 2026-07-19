@@ -15,6 +15,11 @@
 
 using json = nlohmann::json;
 
+// HTTP server worker threads for the gateway. Handlers are I/O-bound (they block
+// on a synchronous Post to a worker), so the gateway needs many more threads than
+// the CPU-count-based default to keep all workers busy concurrently.
+static constexpr size_t kServerThreads = 256;
+
 // A thread-safe pool of httplib::Client connections for a single worker.
 // httplib::Client is not safe for concurrent use, so each in-flight request
 // borrows its own client from the pool and returns it when done.
@@ -277,6 +282,13 @@ int main(int argc, char** argv) {
     
     Gateway gateway(workers);
     httplib::Server server;
+    // Each gateway handler blocks on a synchronous Post to a worker, so with the
+    // default thread pool (hardware_concurrency-1, ~15) the gateway can only keep
+    // ~15 requests in flight across the whole cluster -- starving the workers'
+    // batchers and collapsing under load once inbound concurrency exceeds the
+    // pool. Raise it well above per-worker connection pools so the gateway can
+    // saturate all workers concurrently.
+    server.new_task_queue = [] { return new httplib::ThreadPool(kServerThreads); };
     // inference endpoint
     server.Post("/infer", [&gateway](const httplib::Request& req, httplib::Response& res) {
         try {
