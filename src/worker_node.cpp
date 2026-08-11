@@ -51,6 +51,7 @@ public:
           ) {
         total_requests_.store(0);
         cache_hits_.store(0);
+        std::cout << "Engine backend: " << engine_->name() << std::endl;
         batch_processor_.start();
     }
     
@@ -101,6 +102,7 @@ public:
         json health;
         health["healthy"] = true;
         health["node_id"] = node_id_;
+        health["backend"] = engine_->name();
         health["total_requests"] = total_requests_.load();
         health["cache_hits"] = cache_hits_.load();
         health["cache_size"] = cache_.size();
@@ -182,7 +184,16 @@ int main(int argc, char** argv) {
     }
     
     std::cout << "Using model: " << model_path << std::endl;
-    WorkerNode worker(node_id, port, model_path);
+    // Construct the worker (and its engine) up front so a bad ENGINE_BACKEND or
+    // a load failure exits cleanly with a message instead of a core dump.
+    std::unique_ptr<WorkerNode> worker_ptr;
+    try {
+        worker_ptr = std::make_unique<WorkerNode>(node_id, port, model_path);
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to start worker: " << e.what() << std::endl;
+        return 1;
+    }
+    WorkerNode& worker = *worker_ptr;
     httplib::Server server;
     // cpp-httplib's default server thread pool is hardware_concurrency-1 (~15).
     // Each /infer handler blocks in the batch processor waiting for its result,

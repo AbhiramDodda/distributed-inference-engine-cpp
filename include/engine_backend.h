@@ -11,11 +11,12 @@ struct IEngine {
     virtual ~IEngine() = default;
     virtual std::vector<std::vector<float>> batchPredict(
         const std::vector<std::vector<float>>& inputs) = 0;
+    virtual const char* name() const = 0;   // active backend, for logs / health
 };
 
-// backend: "ort" (default) or "compiled". For "compiled", build_dir points at a
-// tensorforge build directory (plan.json + weights.bin); requires the binary to
-// be built with -DWITH_COMPILED_BACKEND=ON.
+// backend: "" or "ort" -> ONNX Runtime (the default); "compiled" -> tensorforge
+// CompiledEngine (build_dir = a tensorforge build dir; needs -DWITH_COMPILED_BACKEND).
+// Any other name throws (fail loudly rather than silently defaulting).
 std::unique_ptr<IEngine> make_engine(const std::string& backend,
                                      const std::string& model_path,
                                      const std::string& build_dir,

@@ -17,6 +17,7 @@ struct OrtEngine : IEngine {
         const std::vector<std::vector<float>>& in) override {
         return eng.batchPredict(in);
     }
+    const char* name() const override { return "ort"; }
 };
 
 #ifdef WITH_COMPILED_BACKEND
@@ -28,6 +29,7 @@ struct CompiledEngineAdapter : IEngine {
         const std::vector<std::vector<float>>& in) override {
         return eng.batchPredict(in);
     }
+    const char* name() const override { return "compiled"; }
 };
 #endif
 
@@ -36,6 +38,10 @@ struct CompiledEngineAdapter : IEngine {
 std::unique_ptr<IEngine> make_engine(const std::string& backend,
                                      const std::string& model_path,
                                      const std::string& build_dir, int shard_id) {
+    // Default: the project's own ONNX Runtime backend.
+    if (backend.empty() || backend == "ort")
+        return std::make_unique<OrtEngine>(model_path, shard_id);
+
     if (backend == "compiled") {
 #ifdef WITH_COMPILED_BACKEND
         if (build_dir.empty())
@@ -46,5 +52,8 @@ std::unique_ptr<IEngine> make_engine(const std::string& backend,
             "compiled backend not built (rebuild with -DWITH_COMPILED_BACKEND=ON)");
 #endif
     }
-    return std::make_unique<OrtEngine>(model_path, shard_id);
+
+    // Unknown name: fail loudly instead of silently running the default.
+    throw std::runtime_error(
+        "unknown ENGINE_BACKEND '" + backend + "' (valid: ort, compiled)");
 }
