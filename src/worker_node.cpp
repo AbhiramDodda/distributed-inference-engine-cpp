@@ -1,6 +1,7 @@
-#include "inference_engine.h"
+#include "engine_backend.h"
 #include "lru_cache.h"
 #include "batch_processor.h"
+#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <thread>
@@ -33,7 +34,13 @@ public:
     WorkerNode(const std::string& node_id, int port, const std::string& model_path)
         : node_id_(node_id),
           port_(port),
-          engine_(model_path, port % 3),
+          // Backend chosen by ENGINE_BACKEND (ort|compiled); compiled loads the
+          // tensorforge build dir from TF_BUILD_DIR.
+          engine_(make_engine(
+              std::getenv("ENGINE_BACKEND") ? std::getenv("ENGINE_BACKEND") : "ort",
+              model_path,
+              std::getenv("TF_BUILD_DIR") ? std::getenv("TF_BUILD_DIR") : "",
+              port % 3)),
           cache_(1000),  // capacity: 1000 entries
           batch_processor_(
               32,  // max_batch_size
@@ -120,7 +127,7 @@ private:
         }
         
         // batch inference
-        auto outputs = engine_.batchPredict(inputs);
+        auto outputs = engine_->batchPredict(inputs);
         
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -141,7 +148,7 @@ private:
     
     std::string node_id_;
     int port_;
-    InferenceEngine engine_;
+    std::unique_ptr<IEngine> engine_;
     LRUCache<std::vector<float>, std::vector<float>, VectorHash> cache_;
     BatchProcessor<InferenceRequest, InferenceResponse> batch_processor_;
     

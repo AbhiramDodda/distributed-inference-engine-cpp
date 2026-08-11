@@ -32,11 +32,16 @@ include_directories(
 # Link directories
 link_directories(${ONNXRUNTIME_LIB_DIR})
 
+# Optional tensorforge CompiledEngine backend (ENGINE_BACKEND=compiled).
+option(WITH_COMPILED_BACKEND "Link the tensorforge CompiledEngine backend" OFF)
+set(TENSORFORGE_DIR "${CMAKE_SOURCE_DIR}/../tensorforge" CACHE PATH "tensorforge repo root")
+
 # Source files
 set(COMMON_SOURCES
     src/consistent_hash.cpp
     src/circuit_breaker.cpp
     src/inference_engine.cpp
+    src/engine_backend.cpp
 )
 
 # Note: batch_processor.h is header-only (template)
@@ -51,6 +56,25 @@ target_link_libraries(worker_node
     Threads::Threads
     onnxruntime
 )
+
+# Link the prebuilt tensorforge static lib + CUDA runtime into the worker only.
+if(WITH_COMPILED_BACKEND)
+    if(NOT CUDA_TOOLKIT_ROOT_DIR)
+        set(CUDA_TOOLKIT_ROOT_DIR /opt/cuda)
+    endif()
+    set(CUDA_LIBDIR ${CUDA_TOOLKIT_ROOT_DIR}/lib64)
+    message(STATUS "Compiled backend ON: ${TENSORFORGE_DIR} (CUDA ${CUDA_LIBDIR})")
+    target_compile_definitions(worker_node PRIVATE WITH_COMPILED_BACKEND)
+    target_include_directories(worker_node PRIVATE
+        ${TENSORFORGE_DIR}/runtime/include
+        ${TENSORFORGE_DIR}/runtime/external)
+    target_link_libraries(worker_node
+        ${TENSORFORGE_DIR}/runtime/build/libtensorforge_rt.a
+        ${CUDA_LIBDIR}/libcublas.so
+        ${CUDA_LIBDIR}/libnvrtc.so
+        ${CUDA_LIBDIR}/libcudart.so
+        ${CUDA_LIBDIR}/stubs/libcuda.so)
+endif()
 
 # Gateway executable
 add_executable(gateway
