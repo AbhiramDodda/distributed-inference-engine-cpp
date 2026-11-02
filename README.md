@@ -1,6 +1,6 @@
 > **Project provenance:** This is a fork of [AbhiramDodda/distributed-inference-engine-cpp](https://github.com/AbhiramDodda/distributed-inference-engine-cpp). The upstream repository did not specify a license when this fork was prepared. The original implementation and its measurements are credited to the upstream author.
 >
-> This fork adds a temporary AWS benchmark workflow, local cost and cleanup records, and queue and batch timing instrumentation. See [AWS baseline](docs/aws-baseline.md), [instrumented results](docs/instrumented-aws-run.md), and the [run guide](benchmark-aws/README.md). The upstream performance results below describe the original author's experiments; they are not results from our AWS runs.
+> This fork adds a temporary AWS benchmark workflow, local cost and cleanup records, queue and batch timing instrumentation, and capacity-aware ONNX Runtime thread selection. See [AWS baseline](docs/aws-baseline.md), [instrumented results](docs/instrumented-aws-run.md), the [thread-tuning A/B](docs/aws-thread-tuning.md), and the [run guide](benchmark-aws/README.md). The upstream performance results below describe the original author's experiments; they are not results from our AWS runs.
 
 # Distributed Inference Engine
 
@@ -296,6 +296,14 @@ python3 tail_latency_sweep.py --concurrency 16 32 64 96 128 --requests-per-level
 
 ## Recent Improvements
 
+- **Capacity-aware ORT threads**: the worker no longer hardcodes four ONNX Runtime
+  intra-op threads. It now uses `min(4, hardware_concurrency)` with a floor of one,
+  so the two-vCPU benchmark host runs two threads instead of four, and logs the
+  effective count. In a matched `c6i.large` A/B, unique-input p50 fell from
+  237.9 ms to 149.9 ms at concurrency 1 and throughput rose 81%; whole-batch
+  backend p50 fell 56%. The repeated/cache-hit workload was unchanged. This is a
+  single-host synthetic-input result, not a production or multi-host claim. See
+  the [thread-tuning report](docs/aws-thread-tuning.md).
 - **SLO-aware adaptive batching**: the batch processor now anchors its flush
   deadline to the *oldest queued request's arrival time* and flushes when the batch
   is full or that request would exceed a fixed latency budget (20ms). Small batches
@@ -434,6 +442,10 @@ Edit `worker_node.cpp` to adjust:
 - Max batch size: `32`
 - Batch latency budget: `std::chrono::milliseconds(20)`
 - HTTP server threads: `kServerThreads` (keep ≥ max batch size)
+
+ORT intra-op threads are selected in `inference_engine.cpp` as
+`min(4, hardware_concurrency)` with a floor of one. Set `ORT_INTRA_THREADS` to
+override the default for an experiment or a specific deployment.
 
 ### Tuning Circuit Breakers
 

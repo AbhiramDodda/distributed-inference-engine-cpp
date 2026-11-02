@@ -10,7 +10,11 @@ import re
 from pathlib import Path
 
 BASE_REVISION = "c4d8a08b72df810ffad0dce6a993cecae22494bb"
-SOURCE_FILES = {"include/batch_processor.h", "src/worker_node.cpp"}
+SOURCE_FILES = {
+    "include/batch_processor.h",
+    "src/worker_node.cpp",
+    "src/inference_engine.cpp",
+}
 SCRIPT_FILES = {"remote.sh", "load.py", "verify_source.py"}
 
 

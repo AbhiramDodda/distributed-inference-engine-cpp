@@ -125,12 +125,24 @@ class SourceDeliveryTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "not an ancestor"):
                 controller.prepare_source(Path(temp), "instrumented")
 
+    def test_inference_engine_is_delivered_for_thread_change(self):
+        self.assertIn("src/inference_engine.cpp", controller.SOURCE_FILES)
+        self.assertIn("src/inference_engine.cpp", verifier.SOURCE_FILES)
+
+    def test_instrumented_patch_contains_capacity_aware_thread_selection(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            controller.prepare_source(directory, "instrumented")
+            patch = (directory / "source.patch").read_text(encoding="utf-8")
+            self.assertIn("SetIntraOpNumThreads", patch)
+            self.assertIn("hardware_concurrency", patch)
+
     def test_other_source_changes_are_not_silently_omitted(self):
         def fake_git(args, **_kwargs):
             if "rev-parse" in args:
                 return subprocess.CompletedProcess(args, 0, stdout=controller.BASE_REVISION + "\n")
             if "--name-only" in args:
-                return subprocess.CompletedProcess(args, 0, stdout="src/inference_engine.cpp\0")
+                return subprocess.CompletedProcess(args, 0, stdout="src/engine_backend.cpp\0")
             return subprocess.CompletedProcess(args, 0, stdout="")
 
         with (

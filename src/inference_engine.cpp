@@ -2,6 +2,33 @@
 #include <iostream>
 #include <algorithm>
 #include <numeric>
+#include <cstdlib>
+#include <string>
+#include <thread>
+
+namespace {
+
+// Keep ONNX Runtime's intra-op pool within the host's CPU capacity. The
+// previous hardcoded value of 4 oversubscribed 2-vCPU hosts (for example
+// c6i.large), where two threads measured about twice as fast as four. The cap
+// preserves the existing behavior on hosts with four or more CPUs. The
+// environment override exists for experiments and operational tuning.
+int resolveIntraOpThreads() {
+    if (const char* value = std::getenv("ORT_INTRA_THREADS")) {
+        try {
+            const int requested = std::stoi(value);
+            if (requested > 0) {
+                return requested;
+            }
+        } catch (const std::exception&) {
+            // Use the capacity-aware default below.
+        }
+    }
+    const unsigned int hardware = std::thread::hardware_concurrency();
+    return static_cast<int>(std::max(1u, std::min(4u, hardware == 0 ? 1u : hardware)));
+}
+
+}  // namespace
 
 InferenceEngine::InferenceEngine(const std::string& model_path, int shard_id)
     : model_path_(model_path), shard_id_(shard_id) {
@@ -16,7 +43,11 @@ InferenceEngine::~InferenceEngine() {
 void InferenceEngine::initializeSession() {
     std::lock_guard<std::mutex> lock(mutex_);
     session_options_ = std::make_unique<Ort::SessionOptions>();
-    session_options_->SetIntraOpNumThreads(4);
+    const int intra_op_threads = resolveIntraOpThreads();
+    session_options_->SetIntraOpNumThreads(intra_op_threads);
+    std::cout << "ORT intra-op threads: " << intra_op_threads
+              << " (hardware_concurrency=" << std::thread::hardware_concurrency() << ")"
+              << std::endl;
     session_options_->SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
     try {
         OrtCUDAProviderOptions cuda_options;

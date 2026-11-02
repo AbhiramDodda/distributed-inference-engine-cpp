@@ -27,7 +27,11 @@ INSTANCE_TYPE = "c6i.large"
 TAG_KEY = "temporary-inference-benchmark"
 MAX_SECONDS = 30 * 60
 BASE_REVISION = "c4d8a08b72df810ffad0dce6a993cecae22494bb"
-SOURCE_FILES = ("include/batch_processor.h", "src/worker_node.cpp")
+SOURCE_FILES = (
+    "include/batch_processor.h",
+    "src/worker_node.cpp",
+    "src/inference_engine.cpp",
+)
 
 
 class Tee:
@@ -164,6 +168,12 @@ def prepare_source(directory: Path, mode: str) -> dict:
             raise RuntimeError("queue timing instrumentation is missing")
         if "batch_execution_us" not in (root / SOURCE_FILES[1]).read_text(encoding="utf-8"):
             raise RuntimeError("batch timing instrumentation is missing")
+        engine_source = (root / "src/inference_engine.cpp").read_text(encoding="utf-8")
+        if (
+            "SetIntraOpNumThreads" not in engine_source
+            or "hardware_concurrency" not in engine_source
+        ):
+            raise RuntimeError("capacity-aware ORT thread selection is missing")
 
     patch_bytes = patch.encode("utf-8")
     (directory / "source.patch").write_bytes(patch_bytes)
