@@ -109,7 +109,7 @@ class ThreadSelectionIntegrationTests(unittest.TestCase):
             raise unittest.SkipTest("set BENCH_WORKER_BIN and BENCH_MODEL to run real worker tests")
 
     @contextlib.contextmanager
-    def running_worker(self, threads=None):
+    def running_worker(self, threads=None, deadline=None):
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", 0))
             port = sock.getsockname()[1]
@@ -118,6 +118,10 @@ class ThreadSelectionIntegrationTests(unittest.TestCase):
             env["ORT_INTRA_THREADS"] = str(threads)
         else:
             env.pop("ORT_INTRA_THREADS", None)
+        if deadline is not None:
+            env["BATCH_DEADLINE_MS"] = str(deadline)
+        else:
+            env.pop("BATCH_DEADLINE_MS", None)
         with tempfile.TemporaryDirectory(prefix="inference-thread-test-") as tmp:
             log_path = Path(tmp) / "worker.log"
             with log_path.open("w+") as log:
@@ -176,6 +180,12 @@ class ThreadSelectionIntegrationTests(unittest.TestCase):
         expected = min(4, os.cpu_count() or 1)
         with self.running_worker() as (_, log_path):
             self.assertEqual(self.logged_threads(log_path), expected)
+
+    def test_default_batch_deadline_and_override(self):
+        with self.running_worker() as (_, log_path):
+            self.assertIn("Batch Timeout:     10ms", log_path.read_text())
+        with self.running_worker(deadline=20) as (_, log_path):
+            self.assertIn("Batch Timeout:     20ms", log_path.read_text())
 
     def test_two_and_four_threads_produce_equivalent_outputs(self):
         inputs = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]

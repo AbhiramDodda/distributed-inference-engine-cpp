@@ -16,6 +16,23 @@ using json = nlohmann::json;
 // (32) so that enough /infer handlers can be in flight to actually fill a batch.
 static constexpr size_t kServerThreads = 64;
 
+// Batch deadline. Ten milliseconds keeps the low-load queueing tax small while
+// still filling the measured 2- and 4-request batches; the environment override
+// supports latency/throughput experiments and operational tuning.
+static int resolveBatchDeadlineMs() {
+    if (const char* value = std::getenv("BATCH_DEADLINE_MS")) {
+        try {
+            const int requested = std::stoi(value);
+            if (requested > 0) {
+                return requested;
+            }
+        } catch (const std::exception&) {
+            // Use the default below.
+        }
+    }
+    return 10;
+}
+
 // request/response types for batch processor
 struct InferenceRequest {
     std::string request_id;
@@ -44,9 +61,10 @@ public:
               std::getenv("TF_BUILD_DIR") ? std::getenv("TF_BUILD_DIR") : "",
               port % 3)),
           cache_(1000),  // capacity: 1000 entries
+          batch_deadline_ms_(resolveBatchDeadlineMs()),
           batch_processor_(
               32,  // max_batch_size
-              std::chrono::milliseconds(20),  // timeout
+              std::chrono::milliseconds(batch_deadline_ms_),  // timeout
               [this](const std::vector<InferenceRequest>& reqs) {
                   return this->processBatch(reqs);
               }
@@ -106,6 +124,8 @@ public:
         return response;
     }
     
+    int getBatchDeadlineMs() const { return batch_deadline_ms_; }
+
     json getHealth() {
         auto batch_metrics = batch_processor_.getMetrics();
         json health;
@@ -167,6 +187,7 @@ private:
     int port_;
     std::unique_ptr<IEngine> engine_;
     LRUCache<std::vector<float>, std::vector<float>, VectorHash> cache_;
+    int batch_deadline_ms_;
     BatchProcessor<InferenceRequest, InferenceResponse> batch_processor_;
     
     std::atomic<int64_t> total_requests_;
@@ -247,7 +268,7 @@ int main(int argc, char** argv) {
     std::cout << "   Port:              " << port << std::endl;
     std::cout << "   Cache Capacity:    1000 entries" << std::endl;
     std::cout << "   Batch Size:        32 requests" << std::endl;
-    std::cout << "   Batch Timeout:     20ms" << std::endl;
+    std::cout << "   Batch Timeout:     " << worker.getBatchDeadlineMs() << "ms" << std::endl;
     std::cout << "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" << std::endl;
     std::cout << "Ready to accept requests!" << std::endl;
     std::cout << std::endl;

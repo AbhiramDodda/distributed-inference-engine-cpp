@@ -8,7 +8,7 @@ Record where cache-miss requests spend time before choosing an optimization. Thi
 
 The worker includes the following fields in each `/infer` response. The gateway forwards that response.
 
-- `queue_wait_us`: microseconds from insertion into the batch queue until the batch begins processing. It excludes time spent acquiring the queue mutex before insertion and excludes later response handling. A worker busy processing an earlier batch can exceed the configured 20 ms batching deadline.
+- `queue_wait_us`: microseconds from insertion into the batch queue until the batch begins processing. It excludes time spent acquiring the queue mutex before insertion and excludes later response handling. A worker busy processing an earlier batch can exceed the configured batching deadline (10 ms by default, overridable with `BATCH_DEADLINE_MS`).
 - `batch_execution_us`: wall-clock microseconds spent in the backend's `batchPredict` call for the **entire batch**. This includes backend locking, tensor preparation, runtime inference and output handling. It is not pure model compute time or an individually measured request duration.
 - `batch_size`: number of requests in that batch. Every member of the same batch gets the same batch execution duration and batch size.
 

@@ -35,8 +35,8 @@ This is the resumable record for [CONTINUOUS-OPTIMIZATION.md](CONTINUOUS-OPTIMIZ
 | ---: | --- | --- | --- |
 | — | HTTP keep-alive / Nagle delayed-ACK | Cache-hit p50 ~83 ms through the unmodified gateway vs 0.4–0.7 ms direct; enabling `TCP_NODELAY` reduced AWS cache-hit p50 to 1.16–3.54 ms. | **Accepted in cycle 2** |
 | — | Input copy/padding performance | Flatten/pad measured 8/18/39/989 µs for batch 1/2/4/32, negligible against 86–345 ms backend time. The same investigation found and fixed an oversized-input batch-alignment defect. | **Rejected for performance; correctness fixed in cycle 3** |
-| 1 | Batching policy | Batch 4 amortizes fixed cost (165 ms/request vs 197 ms at batch 1), but benchmark concurrency is only 1–4. Larger batches would trade tail latency for throughput. | Next candidate; needs a higher-concurrency sweep |
-| 2 | Gateway logging / JSON | Per-request `std::endl` logging and JSON parse/dump; nodelay removed most cache-hit latency without touching logging. | Deferred; profile after batching |
+| — | Batching policy / deadline | 20 ms → 10 ms lowered unique p50 2–9% and queue wait ~50% at c1–c4; 5 ms lost batch size at c32. | **Accepted in cycle 4** |
+| 1 | Gateway logging / JSON | Per-request `std::endl` logging and JSON parse/dump; nodelay removed most cache-hit latency without touching logging. | Next bounded investigation |
 | 3 | Cache/routing | Repeated workload is ~100% hits; direct lookups are sub-millisecond. No demonstrated bottleneck. | No action |
 | 4 | Measurement quality | Closed-loop client, shared CPU, 60 samples/level, p99 unstable, baseline sessions differ. | Improve with paired runs; do not infer p99 |
 | 5 | Multi-host scaling | Not authorized and not measurable on one host. | Out of scope; document only |
@@ -75,6 +75,23 @@ This is the resumable record for [CONTINUOUS-OPTIMIZATION.md](CONTINUOUS-OPTIMIZ
 | Decision | Accepted as a correctness fix. It is not a performance claim. |
 | Cost | $0; local only. |
 | Artifacts | `tests/test_batch_shapes.cpp`, `src/inference_engine.cpp`, `CMakeLists.txt`; local output `/tmp/opencode/build/test_batch_shapes.log`. |
+
+## Cycle 4 — batch deadline 20 ms to 10 ms (accepted)
+
+| Field | Record |
+| --- | --- |
+| Hypothesis | The fixed 20 ms batching deadline is an avoidable low-load queueing tax. A 10 ms deadline should lower queue wait and unique-request latency while still filling the measured 2- and 4-request batches. |
+| Baseline | Accepted cycle-3 source with the 20 ms default; AWS runs `infer-ff9ac124eb8e79ea`, `infer-2063d463870454ba`. |
+| Local sweep | 20/10/5/2 ms at c1/c2/c4: 10 ms p50 97.3/183.3/356.0 ms vs 20 ms 107.0/193.2/363.5 ms; throughput 10.23/10.86/11.14 vs 9.30/10.33/10.91 req/s; batch sizes unchanged. High-concurrency: 5 ms lost batch size at c32 (mean 10.1 vs 20), while 10 ms kept batch size 20 and throughput within noise. |
+| Change | Default `BATCH_DEADLINE_MS` 10 ms, environment override, effective deadline logged, and an opt-in default/override test. |
+| Workload | Same 360-request `c6i.large` A/B; two runs per variant. |
+| Acceptance rule | Lower unique p50 without a material throughput regression, unchanged cache-hit behavior, no failures, and verified cleanup. |
+| AWS A/B | Unique p50 108.0/190.4/360.0 → 98.5/181.6/351.5 ms at c1/c2/c4; throughput 9.22/10.48/11.10 → 10.09/10.93/11.36 req/s. Queue-wait p50 ~20.06 → ~10.06 ms. Repeated p50 1.16/2.15/3.54 → 1.15/2.17/3.69 ms (noise). Backend unchanged. No failures. |
+| Correctness | Default suite 33 passed / 3 intended skips; opt-in test verifies `Batch Timeout: 10ms` and `BATCH_DEADLINE_MS=20`; all five opt-in worker/gateway tests pass; `ctest` batch tests pass. |
+| Decision | Accepted as a bounded latency tuning change. The gain is smaller than cycles 1–2 and is a tradeoff, not a universal optimum. |
+| Artifacts | `benchmarks/results/2026-11-02-aws-batch-deadline.json`, `docs/aws-batch-deadline.md`, raw runs `infer-f6dfdf8dd788978c`, `infer-d1070c813d774208`; local sweeps under `benchmark-aws/runs/local-cycle4-*`. |
+| Cost | Two new runs: $0.003197 + $0.003222 = $0.006419. Eleven-run project estimate $0.037929. Cleanup verified. |
+| Limits | Single host, synthetic padded inputs, closed-loop client sharing CPU; baseline/changed sessions differ; high-concurrency evidence is local only. |
 
 ## Checkpoint rules
 

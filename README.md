@@ -1,6 +1,6 @@
 > **Project provenance:** This is a fork of [AbhiramDodda/distributed-inference-engine-cpp](https://github.com/AbhiramDodda/distributed-inference-engine-cpp). The upstream repository did not specify a license when this fork was prepared. The original implementation and its measurements are credited to the upstream author.
 >
-> This fork adds a temporary AWS benchmark workflow, local cost and cleanup records, queue and batch timing instrumentation, capacity-aware ONNX Runtime thread selection, and `TCP_NODELAY` keep-alive tuning. See [AWS baseline](docs/aws-baseline.md), [instrumented results](docs/instrumented-aws-run.md), the [thread-tuning A/B](docs/aws-thread-tuning.md), the [HTTP nodelay A/B](docs/aws-http-nodelay.md), and the [run guide](benchmark-aws/README.md). The upstream performance results below describe the original author's experiments; they are not results from our AWS runs.
+> This fork adds a temporary AWS benchmark workflow, local cost and cleanup records, queue and batch timing instrumentation, capacity-aware ONNX Runtime thread selection, `TCP_NODELAY` keep-alive tuning, and a 10 ms batch deadline. See [AWS baseline](docs/aws-baseline.md), [instrumented results](docs/instrumented-aws-run.md), the [thread-tuning A/B](docs/aws-thread-tuning.md), the [HTTP nodelay A/B](docs/aws-http-nodelay.md), the [batch-deadline A/B](docs/aws-batch-deadline.md), and the [run guide](benchmark-aws/README.md). The upstream performance results below describe the original author's experiments; they are not results from our AWS runs.
 
 # Distributed Inference Engine
 
@@ -115,7 +115,8 @@ Start three worker nodes on different ports:
 Worker configuration:
 - Cache capacity: 1000 entries
 - Max batch size: 32 requests
-- Batch latency budget: 20ms (max time a request waits to be batched)
+- Batch latency budget: 10ms by default (max time a request waits to be batched;
+  override with `BATCH_DEADLINE_MS`)
 - HTTP server threads: 64 (kept above max batch size so batches can fill)
 
 ### 3. Start Gateway
@@ -308,6 +309,12 @@ python3 tail_latency_sweep.py --concurrency 16 32 64 96 128 --requests-per-level
   11–28%. Whole-batch backend time was unchanged. The high cache-hit throughput
   is client-bound at the upper levels, and this is a single-host synthetic-input
   result. See the [HTTP nodelay report](docs/aws-http-nodelay.md).
+- **10 ms batch deadline**: the default batching window is 10 ms instead of
+  20 ms, with `BATCH_DEADLINE_MS` as an override. On the 2-vCPU benchmark host,
+  unique-input p50 fell 2–9% and throughput rose 2–9% at concurrency 1–4, while
+  the measured batch sizes and cache-hit workload stayed unchanged. This is a
+  latency/throughput tuning choice, not a universal optimum. See the
+  [batch-deadline report](docs/aws-batch-deadline.md).
 - **Capacity-aware ORT threads**: the worker no longer hardcodes four ONNX Runtime
   intra-op threads. It now uses `min(4, hardware_concurrency)` with a floor of one,
   so the two-vCPU benchmark host runs two threads instead of four, and logs the
@@ -318,7 +325,8 @@ python3 tail_latency_sweep.py --concurrency 16 32 64 96 128 --requests-per-level
   the [thread-tuning report](docs/aws-thread-tuning.md).
 - **SLO-aware adaptive batching**: the batch processor now anchors its flush
   deadline to the *oldest queued request's arrival time* and flushes when the batch
-  is full or that request would exceed a fixed latency budget (20ms). Small batches
+  is full or that request would exceed a fixed latency budget (10ms by default,
+  override with `BATCH_DEADLINE_MS`). Small batches
   at low load (latency mode), full batches under pressure (throughput mode) — the
   window adapts to offered load instead of a fixed timer.
 - **Right-sized HTTP server thread pools**: cpp-httplib defaults its server pool to
@@ -452,7 +460,8 @@ series above, which is measured on the worker.
 Edit `worker_node.cpp` to adjust:
 - Cache capacity: `LRUCache cache_(1000)`
 - Max batch size: `32`
-- Batch latency budget: `std::chrono::milliseconds(20)`
+- Batch latency budget: `std::chrono::milliseconds(10)` by default; override with
+  `BATCH_DEADLINE_MS`
 - HTTP server threads: `kServerThreads` (keep ≥ max batch size)
 
 ORT intra-op threads are selected in `inference_engine.cpp` as
