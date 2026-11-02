@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <numeric>
 #include <cstdlib>
+#include <stdexcept>
 #include <string>
 #include <thread>
 
@@ -179,14 +180,20 @@ std::vector<std::vector<float>> InferenceEngine::batchPredict(
         std::multiplies<int64_t>()
     );
     
-    // all inputs are flattened into single batch
+    // Flatten each sample into exactly one model-sized slot. Padding short
+    // inputs is intentional; truncating oversized inputs prevents them from
+    // shifting every later sample in the batch.
+    if (per_sample_size <= 0) {
+        throw std::runtime_error("model input shape has no per-sample elements");
+    }
+    const size_t sample_size = static_cast<size_t>(per_sample_size);
     std::vector<float> batch_input;
-    batch_input.reserve(batch_size * per_sample_size);
+    batch_input.reserve(batch_size * sample_size);
     for (const auto& input : inputs) {
-        batch_input.insert(batch_input.end(), input.begin(), input.end());
-        // pad if needed
-        if (static_cast<int64_t>(input.size()) < per_sample_size) {
-            batch_input.resize(batch_input.size() + (per_sample_size - input.size()), 0.0f);
+        const size_t copy_size = std::min(input.size(), sample_size);
+        batch_input.insert(batch_input.end(), input.begin(), input.begin() + copy_size);
+        if (copy_size < sample_size) {
+            batch_input.resize(batch_input.size() + (sample_size - copy_size), 0.0f);
         }
     }
     
@@ -213,9 +220,15 @@ std::vector<std::vector<float>> InferenceEngine::batchPredict(
         1
     );
     
+    if (output_tensors.empty()) {
+        throw std::runtime_error("model returned no output tensors");
+    }
     float* output_data = output_tensors[0].GetTensorMutableData<float>();
     auto output_shape = output_tensors[0].GetTensorTypeAndShapeInfo().GetShape();
-    
+    if (output_shape.empty() || output_shape[0] != static_cast<int64_t>(batch_size)) {
+        throw std::runtime_error("model output batch dimension does not match the input batch");
+    }
+
     int64_t per_output_size = std::accumulate(
         output_shape.begin() + 1,  // batch dimension skipped
         output_shape.end(),

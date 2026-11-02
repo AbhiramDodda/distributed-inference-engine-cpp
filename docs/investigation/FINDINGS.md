@@ -1,6 +1,6 @@
 # Investigation record
 
-Status: **complete for cycles 1 and 2.** The continuous cycle ledger is [EXPERIMENTS.md](EXPERIMENTS.md); cycle 3 is pending. Independent review remains outstanding; verification is a labeled self-review.
+Status: **complete for cycles 1–3.** The continuous cycle ledger is [EXPERIMENTS.md](EXPERIMENTS.md); cycle 4 is pending. Independent review remains outstanding; verification is a labeled self-review.
 
 ## Context and scope
 
@@ -29,7 +29,7 @@ Source and artifact identities: model `models/resnet50-v2-7.onnx`, SHA-256 `7910
 
 | Command or activity | Environment | Result, count and evidence path | Limitation |
 | --- | --- | --- | --- |
-| `python3 -m unittest discover -s tests -v` | local | Initial run: 31 passed, 1 skipped. Final run: 33 passed, 2 skipped; the skips are the opt-in real-worker classes (`BENCH_WORKER_BIN`/`BENCH_MODEL` not set in that run). | The default suite does not exercise the real model. |
+| `python3 -m unittest discover -s tests -v` | local | Initial run: 31 passed, 1 skipped. Final run: 33 passed, 3 skipped; the skips are the opt-in real-worker/gateway classes (`BENCH_WORKER_BIN`/`BENCH_GATEWAY_BIN`/`BENCH_MODEL` not set in that run). | The default suite does not exercise the real model. |
 | `bash -n benchmark-aws/remote.sh` | local | Syntax OK. | Syntax only. |
 | Retained instrumented AWS run analysis (`benchmark-aws/runs/infer-8bb17685b18e63a4/results/requests.jsonl`) | prior AWS `c6i.large`, 2 vCPU, 4 ORT intra-op threads | Unique inputs: batch 1 backend p50 197 ms, batch 2 372 ms (186 ms/request), batch 4 660 ms (165 ms/request); queue p50 ~20 ms. Repeated inputs: cache-hit end-to-end p50 ~98 ms despite sub-millisecond direct cache lookups. | 60 requests per level, closed loop, client shares CPU. Batch time is whole-batch. |
 | Local HTTP probe, direct worker vs gateway, persistent keep-alive | local, 16 CPU | Direct worker cache hit p50 0.4–0.7 ms; through the unmodified gateway p50 ~83 ms with values quantized near 1, 42, and 84 ms. | Probe, not the final benchmark. |
@@ -53,7 +53,8 @@ Source and artifact identities: model `models/resnet50-v2-7.onnx`, SHA-256 `7910
 
 ## Correctness, reliability and security findings
 
-- No crash, wrong-response, or request/response pairing failure was reproduced. The final default suite had 33 passes and 2 opt-in skips; all four opt-in real-worker tests passed when a built worker and model were supplied.
+- No crash or request/response pairing failure was reproduced. The final default suite had 33 passes and 3 opt-in skips; all five opt-in real-worker/gateway tests passed when the binaries and model were supplied.
+- **Oversized-input batch alignment (reproduced and fixed in cycle 3):** `batchPredict` appended every input element and padded only short inputs. An oversized first input shifted the next sample, changing its output by 10.1369 while the response shape stayed valid. The engine now caps each sample at the model’s per-sample size, truncates the excess, and checks the output batch dimension. `tests/test_batch_shapes.cpp` covers the regression with the real model.
 - The selected change alters only the ORT intra-op thread count. It can change floating-point reduction order; output parity must be checked with fixed inputs and a stated tolerance.
 - The HTTP delayed-ACK finding is a latency issue, not a correctness issue. It was implemented and accepted as cycle 2; see [EXPERIMENTS.md](EXPERIMENTS.md) and [the HTTP nodelay report](../aws-http-nodelay.md).
 - No security issue was reproduced. Probes bound to loopback and 18xxx ports; no service was exposed. No credentials or account identifiers were printed.
@@ -74,10 +75,10 @@ Source and artifact identities: model `models/resnet50-v2-7.onnx`, SHA-256 `7910
 ## Evidence and limits
 
 - **Implemented:** `src/inference_engine.cpp` now selects `min(4, hardware_concurrency)` intra-op threads (floor 1), supports `ORT_INTRA_THREADS`, and logs the effective count. The AWS delivery allowlist now includes that file; the controller and verifier check for the thread selection, and the source-delivery tests cover it.
-- **Tested, with exact outcomes:** `python3 -m unittest discover -s tests -v` → 33 tests passed, 2 skipped (the opt-in real-worker classes). All four opt-in real-worker tests passed with the changed binary and model, including output parity between 2 and 4 threads within `1e-4`. Local matched A/B above: 180/180 requests succeeded; c1/c2/c4 p50 improved 35%/39%/36%; throughput improved 71%/74%/63%; backend p50 roughly halved.
+- **Tested, with exact outcomes:** `python3 -m unittest discover -s tests -v` → 33 tests passed, 3 skipped (the opt-in real-worker/gateway classes). All five opt-in tests passed with the changed binaries and model, including output parity between 2 and 4 threads within `1e-4` and the gateway cache-hit regression guard. `ctest` in a temporary build ran `batch_timings` and `batch_shapes`; both passed, and `test_batch_shapes` passed with the real model. Local matched A/B above: 180/180 requests succeeded; c1/c2/c4 p50 improved 35%/39%/36%; throughput improved 71%/74%/63%; backend p50 roughly halved.
 - **Reviewed and by whom:** labeled self-review performed against the actual diff, tests, raw AWS summaries, cleanup records, cost ledger, and rendered resume. Independent review remains outstanding because no separate reviewer was authorized for source disclosure. Self-review found no critical or important defect; the remaining items are the stated limitations.
 - **Not tested or blocked:** no current blocker. Cycle 2 (HTTP nodelay) is accepted and documented in [EXPERIMENTS.md](EXPERIMENTS.md). Model accuracy was not assessed because the inputs are synthetic and the model has no ground-truth labels in this workload. The resume's independent visual review is the owner's responsibility.
-- **Risks and next steps:** the result is single-host and synthetic; do not generalize to production or multi-host. The backend baseline is from a different session than the changed runs. Cycle 3 candidates are ranked in [EXPERIMENTS.md](EXPERIMENTS.md); the next one is input preparation/copy measurement. Run `python3 docs/investigation/audit.py` and review the diff before any commit.
+- **Risks and next steps:** the performance result is single-host and synthetic; do not generalize to production or multi-host. The backend baseline is from a different session than the changed runs. Cycle 4 candidates are ranked in [EXPERIMENTS.md](EXPERIMENTS.md); the next one is the batching/queue policy sweep. Run `python3 docs/investigation/audit.py` and review the diff before any commit.
 
 ## Cycle 2 follow-up — HTTP TCP_NODELAY (accepted)
 

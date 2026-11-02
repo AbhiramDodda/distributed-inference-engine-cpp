@@ -20,7 +20,7 @@ For cache hits these three fields are JSON `null`: the request did not queue for
 
 ## Local verification
 
-Run the Python checks with `python3 -m unittest discover -s tests -v`. The real-worker integration test is skipped unless `BENCH_WORKER_BIN` and `BENCH_MODEL` point to a locally built worker and model. `ctest --test-dir <build-dir> --output-on-failure` exercises queue timing and response pairing. A real worker test checks miss and hit fields, legacy field presence, and equal output.
+Run the Python checks with `python3 -m unittest discover -s tests -v`. The real-worker integration test is skipped unless `BENCH_WORKER_BIN` and `BENCH_MODEL` point to a locally built worker and model. `ctest --test-dir <build-dir> --output-on-failure` exercises queue timing and response pairing. It also builds `test_batch_shapes`; set `BENCH_MODEL` to run the real oversized-input check, otherwise that test prints `SKIP`. A real worker test checks miss and hit fields, legacy field presence, and equal output.
 
 ## Deployment boundary
 

@@ -160,6 +160,11 @@ Response:
 }
 ```
 
+The engine pads a shorter `input_data` to the model's input shape and truncates
+a longer one to that shape. Each request therefore occupies exactly one
+model-sized slot in a batch; an oversized request cannot shift the samples after
+it.
+
 #### GET /stats
 
 Get gateway statistics and circuit breaker states.

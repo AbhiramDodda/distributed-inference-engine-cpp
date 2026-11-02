@@ -34,12 +34,12 @@ This is the resumable record for [CONTINUOUS-OPTIMIZATION.md](CONTINUOUS-OPTIMIZ
 | Priority | Candidate | Evidence | Status |
 | ---: | --- | --- | --- |
 | — | HTTP keep-alive / Nagle delayed-ACK | Cache-hit p50 ~83 ms through the unmodified gateway vs 0.4–0.7 ms direct; enabling `TCP_NODELAY` reduced AWS cache-hit p50 to 1.16–3.54 ms. | **Accepted in cycle 2** |
-| 1 | Input copy/padding/allocation | Six copies of the request vector on the cache-miss path; synthetic inputs are padded from 3 to 150,528 floats. Expected gain is small relative to backend time, but preparation is currently outside `batch_execution_us`. | Next candidate; needs a preparation-only measurement |
-| 2 | Batching policy | Batch 4 amortizes fixed cost (165 ms/request vs 197 ms at batch 1), but benchmark concurrency is only 1–4. Larger batches would trade tail latency for throughput. | Deferred; needs a higher-concurrency sweep |
-| 3 | Gateway logging / JSON | Per-request `std::endl` logging and JSON parse/dump; nodelay removed most cache-hit latency without touching logging. | Lower priority; profile after input preparation |
-| 4 | Cache/routing | Repeated workload is ~100% hits; direct lookups are sub-millisecond. No demonstrated bottleneck. | No action |
-| 5 | Measurement quality | Closed-loop client, shared CPU, 60 samples/level, p99 unstable, baseline sessions differ. | Improve with paired runs; do not infer p99 |
-| 6 | Multi-host scaling | Not authorized and not measurable on one host. | Out of scope; document only |
+| — | Input copy/padding performance | Flatten/pad measured 8/18/39/989 µs for batch 1/2/4/32, negligible against 86–345 ms backend time. The same investigation found and fixed an oversized-input batch-alignment defect. | **Rejected for performance; correctness fixed in cycle 3** |
+| 1 | Batching policy | Batch 4 amortizes fixed cost (165 ms/request vs 197 ms at batch 1), but benchmark concurrency is only 1–4. Larger batches would trade tail latency for throughput. | Next candidate; needs a higher-concurrency sweep |
+| 2 | Gateway logging / JSON | Per-request `std::endl` logging and JSON parse/dump; nodelay removed most cache-hit latency without touching logging. | Deferred; profile after batching |
+| 3 | Cache/routing | Repeated workload is ~100% hits; direct lookups are sub-millisecond. No demonstrated bottleneck. | No action |
+| 4 | Measurement quality | Closed-loop client, shared CPU, 60 samples/level, p99 unstable, baseline sessions differ. | Improve with paired runs; do not infer p99 |
+| 5 | Multi-host scaling | Not authorized and not measurable on one host. | Out of scope; document only |
 
 ## Cycle 2 — HTTP keep-alive / Nagle (accepted)
 
@@ -61,6 +61,20 @@ This is the resumable record for [CONTINUOUS-OPTIMIZATION.md](CONTINUOUS-OPTIMIZ
 | Cost | Two new runs: $0.003273 + $0.003450 = $0.006723. Nine-run project estimate $0.031510. Cleanup independently verified. |
 | Limits | Single host, synthetic padded inputs, closed-loop client sharing CPU; high cache-hit throughput is client-bound. Baseline and changed AWS sessions differ. No p99 claim. |
 | Status | Accepted and documented. |
+
+## Cycle 3 — input shape alignment (accepted correctness fix)
+
+| Field | Record |
+| --- | --- |
+| Hypothesis | `InferenceEngine::batchPredict` appends every input element and pads only short inputs. An oversized input therefore occupies more than one model-sized slot and shifts every later sample in the batch, producing wrong outputs while still returning the expected shape. Input preparation itself may be too small to optimize. |
+| Baseline | Accepted cycle-2 source (thread-tuned, TCP_NODELAY). |
+| Preparation measurement | A standalone C++ probe measured flatten/pad at 8/18/39/989 µs for batch 1/2/4/32, against 86–345 ms whole-batch backend time. The performance candidate was rejected. |
+| Reproduction | A direct `batchPredict({oversized, small})` call produced a small-sample output that differed from its single-request reference by 10.1369. The new `tests/test_batch_shapes.cpp` failed with “sample after an oversized input was misaligned” before the fix. |
+| Change | Cap each sample at the model’s per-sample element count, pad short samples, and truncate oversized samples. Add guards for an empty output tensor and an output batch dimension that differs from the input batch. |
+| Verification | `test_batch_shapes` passes with the real model; the default suite remains green; all opt-in worker/gateway tests pass. No AWS run was needed because the defect is host-independent and the benchmark workload uses short inputs. |
+| Decision | Accepted as a correctness fix. It is not a performance claim. |
+| Cost | $0; local only. |
+| Artifacts | `tests/test_batch_shapes.cpp`, `src/inference_engine.cpp`, `CMakeLists.txt`; local output `/tmp/opencode/build/test_batch_shapes.log`. |
 
 ## Checkpoint rules
 
