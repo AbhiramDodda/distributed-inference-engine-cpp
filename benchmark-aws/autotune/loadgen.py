@@ -36,8 +36,10 @@ def build_specs(
     seed: int = 0,
 ) -> list[dict]:
     entries = select_images(manifest, mode, count, seed)
-    if transport == "json" and count > 50:
-        raise ValueError("JSON transport is limited to 50 images; use binary for capacity runs")
+    # JSON bodies are large; 200 requests is enough for a transport comparison
+    # while keeping the precomputed payload set below about 250 MB.
+    if transport == "json" and count > 200:
+        raise ValueError("JSON transport is limited to 200 requests; use binary for capacity")
     payload_cache: dict[str, bytes] = {}
     specs = []
     for index, entry in enumerate(entries):

@@ -27,14 +27,16 @@ INSTANCE_TYPE = "c6i.large"
 TAG_KEY = "temporary-inference-benchmark"
 MAX_SECONDS = 30 * 60
 BASE_REVISION = "c4d8a08b72df810ffad0dce6a993cecae22494bb"
-SOURCE_FILES = (
+BASELINE_SOURCE_FILES = (
     "include/batch_processor.h",
+    "include/engine_backend.h",
+    "include/inference_engine.h",
     "src/worker_node.cpp",
     "src/inference_engine.cpp",
+    "src/engine_backend.cpp",
     "src/gateway.cpp",
-    "include/tensor_payload.h",
 )
-BASELINE_SOURCE_FILES = SOURCE_FILES[:-1]
+SOURCE_FILES = BASELINE_SOURCE_FILES + ("include/tensor_payload.h",)
 
 
 class Tee:
@@ -172,9 +174,9 @@ def prepare_source(directory: Path, mode: str) -> dict:
         for name, expected in sources.items():
             if hashlib.sha256((root / name).read_bytes()).hexdigest() != expected:
                 raise RuntimeError(f"source changed while preparing the snapshot: {name}")
-        if "queue_wait_us" not in (root / SOURCE_FILES[0]).read_text(encoding="utf-8"):
+        if "queue_wait_us" not in (root / "include/batch_processor.h").read_text(encoding="utf-8"):
             raise RuntimeError("queue timing instrumentation is missing")
-        if "batch_execution_us" not in (root / SOURCE_FILES[1]).read_text(encoding="utf-8"):
+        if "batch_execution_us" not in (root / "src/worker_node.cpp").read_text(encoding="utf-8"):
             raise RuntimeError("batch timing instrumentation is missing")
         engine_source = (root / "src/inference_engine.cpp").read_text(encoding="utf-8")
         if (

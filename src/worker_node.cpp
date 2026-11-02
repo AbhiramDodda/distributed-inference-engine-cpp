@@ -2,6 +2,7 @@
 #include "lru_cache.h"
 #include "batch_processor.h"
 #include "tensor_payload.h"
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -79,7 +80,12 @@ public:
               port % 3)),
           cache_(resolvePositiveSize("CACHE_CAPACITY", 1000)),
           batch_deadline_ms_(resolveBatchDeadlineMs()),
-          max_batch_size_(resolvePositiveSize("MAX_BATCH_SIZE", 32)),
+          max_batch_size_(
+              std::min(
+                  resolvePositiveSize("MAX_BATCH_SIZE", 32),
+                  engine_->maxBatchSize()
+              )
+          ),
           batch_processor_(
               max_batch_size_,
               std::chrono::milliseconds(batch_deadline_ms_),
@@ -90,6 +96,8 @@ public:
         total_requests_.store(0);
         cache_hits_.store(0);
         std::cout << "Engine backend: " << engine_->name() << std::endl;
+        std::cout << "Model batch limit: " << engine_->maxBatchSize() << std::endl;
+        std::cout << "Effective batch size: " << max_batch_size_ << std::endl;
         batch_processor_.start();
     }
     

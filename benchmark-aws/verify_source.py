@@ -12,8 +12,11 @@ from pathlib import Path
 BASE_REVISION = "c4d8a08b72df810ffad0dce6a993cecae22494bb"
 BASELINE_SOURCE_FILES = {
     "include/batch_processor.h",
+    "include/engine_backend.h",
+    "include/inference_engine.h",
     "src/worker_node.cpp",
     "src/inference_engine.cpp",
+    "src/engine_backend.cpp",
     "src/gateway.cpp",
 }
 SOURCE_FILES = BASELINE_SOURCE_FILES | {"include/tensor_payload.h"}

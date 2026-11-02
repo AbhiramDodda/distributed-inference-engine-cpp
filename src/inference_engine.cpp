@@ -75,6 +75,17 @@ void InferenceEngine::initializeSession() {
         auto input_type_info = session_->GetInputTypeInfo(0);
         auto tensor_info = input_type_info.GetTensorTypeAndShapeInfo();
         input_shape_ = tensor_info.GetShape();
+        // A static first dimension is the model's maximum batch size. Dynamic
+        // batch models (-1) keep the large default and let the batch processor
+        // choose. This prevents a batch >1 from being sent to a static batch-1
+        // model, which ONNX Runtime rejects.
+        if (!input_shape_.empty()) {
+            if (input_shape_[0] > 0) {
+                max_batch_size_ = static_cast<size_t>(input_shape_[0]);
+            } else {
+                max_batch_size_ = 1024;
+            }
+        }
         // Handle dynamic dimensions (-1)
         for (auto& dim : input_shape_) {
             if (dim == -1) {
@@ -258,4 +269,8 @@ std::vector<int64_t> InferenceEngine::getInputShape() const {
 
 std::vector<int64_t> InferenceEngine::getOutputShape() const {
     return output_shape_;
+}
+
+size_t InferenceEngine::maxBatchSize() const {
+    return max_batch_size_;
 }

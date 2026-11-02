@@ -17,6 +17,7 @@ struct OrtEngine : IEngine {
         const std::vector<std::vector<float>>& in) override {
         return eng.batchPredict(in);
     }
+    size_t maxBatchSize() const override { return eng.maxBatchSize(); }
     const char* name() const override { return "ort"; }
 };
 

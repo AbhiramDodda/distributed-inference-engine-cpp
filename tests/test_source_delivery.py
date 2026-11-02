@@ -133,7 +133,10 @@ class SourceDeliveryTests(unittest.TestCase):
     def test_delivery_includes_each_changed_source_file(self):
         for name in (
             "src/inference_engine.cpp",
+            "src/engine_backend.cpp",
             "src/gateway.cpp",
+            "include/engine_backend.h",
+            "include/inference_engine.h",
             "include/tensor_payload.h",
         ):
             self.assertIn(name, controller.SOURCE_FILES)
@@ -156,7 +159,7 @@ class SourceDeliveryTests(unittest.TestCase):
             if "rev-parse" in args:
                 return subprocess.CompletedProcess(args, 0, stdout=controller.BASE_REVISION + "\n")
             if "--name-only" in args:
-                return subprocess.CompletedProcess(args, 0, stdout="src/engine_backend.cpp\0")
+                return subprocess.CompletedProcess(args, 0, stdout="src/not_allowed.cpp\0")
             return subprocess.CompletedProcess(args, 0, stdout="")
 
         with (

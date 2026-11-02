@@ -89,6 +89,39 @@ class LoadgenTests(unittest.TestCase):
         self.assertEqual(analyze.cost_per_million(10.0, 0.85), 23.6111)
         self.assertIsNone(analyze.cost_per_million(0.0, 0.85))
 
+    def test_consistency_groups_repeated_outputs(self):
+        output = [0.0] * 1000
+        output[7] = 10.0
+        rows = [
+            {"success": True, "label_index": 7, "output": output, "node_id": "worker_1"},
+            {"success": True, "label_index": 7, "output": output, "node_id": "worker_2"},
+            {
+                "success": True,
+                "label_index": 8,
+                "output": [0.0] * 1000,
+                "node_id": "worker_1",
+            },
+        ]
+        result = analyze.consistency(rows)
+        self.assertEqual(result["samples"], 3)
+        self.assertEqual(result["labels"], 2)
+        self.assertEqual(result["top1_conflicts"], 0)
+        self.assertEqual(result["multi_node_labels"], 1)
+        self.assertEqual(result["max_abs_diff"], 0.0)
+
+    def test_consistency_detects_a_top1_conflict(self):
+        first = [0.0] * 1000
+        first[1] = 10.0
+        second = [0.0] * 1000
+        second[2] = 10.0
+        rows = [
+            {"success": True, "label_index": 1, "output": first, "node_id": "worker_1"},
+            {"success": True, "label_index": 1, "output": second, "node_id": "worker_2"},
+        ]
+        result = analyze.consistency(rows)
+        self.assertEqual(result["top1_conflicts"], 1)
+        self.assertGreater(result["max_abs_diff"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

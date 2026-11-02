@@ -1,6 +1,10 @@
 #include "consistent_hash.h"
 #include "circuit_breaker.h"
+#include <algorithm>
+#include <atomic>
+#include <cmath>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <map>
 #include <vector>
@@ -105,6 +109,25 @@ public:
     };
 
     explicit Gateway(const std::vector<std::string>& workers) {
+        if (const char* value = std::getenv("ROUTING_POLICY")) {
+            routing_policy_ = value;
+        }
+        if (routing_policy_ != "hash" && routing_policy_ != "least_loaded" &&
+            routing_policy_ != "bounded_load") {
+            throw std::invalid_argument(
+                "ROUTING_POLICY must be hash, least_loaded, or bounded_load"
+            );
+        }
+        if (const char* value = std::getenv("BOUNDED_LOAD_FACTOR")) {
+            try {
+                const double requested = std::stod(value);
+                if (requested >= 1.0 && requested <= 4.0) {
+                    load_factor_ = requested;
+                }
+            } catch (const std::exception&) {
+                // Keep the default factor.
+            }
+        }
         // Initialize consistent hash
         for (const auto& worker : workers) {
             hash_ring_.addNode(worker);
@@ -126,17 +149,19 @@ public:
             clients_[worker] = std::make_unique<ClientPool>(
                 url_parts.first, url_parts.second, kClientPoolSize
             );
+            in_flight_[worker] = std::make_unique<std::atomic<int>>(0);
 
             std::cout << "Connected to worker: " << worker << std::endl;
         }
+        std::cout << "Routing policy: " << routing_policy_ << std::endl;
     }
     
     std::string routeRequest(const json& request) {
-        // Route by a hash of the input data (not request_id) so that identical
-        // inputs always map to the same worker, maximizing cache hits and
-        // avoiding redundant copies of the same result across workers.
+        // Hash routing preserves cache locality. Least-loaded and bounded-load
+        // routing avoid the hot-worker bottleneck that a small hash ring can
+        // create for a fixed image set.
         std::string routing_key = computeRoutingKey(request);
-        std::string target_node = hash_ring_.getNode(routing_key);
+        std::string target_node = selectNode(routing_key);
         if (target_node.empty()) {
             throw std::runtime_error("No workers available");
         }
@@ -160,7 +185,7 @@ public:
 
     TensorResponse routeTensor(const std::string& body, const std::string& request_id) {
         const std::string routing_key = computeTensorKey(body);
-        const std::string target_node = hash_ring_.getNode(routing_key);
+        const std::string target_node = selectNode(routing_key);
         if (target_node.empty()) {
             throw std::runtime_error("No workers available");
         }
@@ -182,7 +207,18 @@ public:
 
     json getStats() {
         json stats;
-        stats["total_workers"] = hash_ring_.getAllNodes().size();
+        auto nodes = hash_ring_.getAllNodes();
+        stats["total_workers"] = nodes.size();
+        stats["routing_policy"] = routing_policy_;
+        stats["bounded_load_factor"] = load_factor_;
+        json loads = json::array();
+        for (const auto& node : nodes) {
+            json item;
+            item["node"] = node;
+            item["in_flight"] = in_flight_.at(node)->load();
+            loads.push_back(item);
+        }
+        stats["in_flight"] = loads;
         
         json circuit_states = json::array();
         for (const auto& [node, breaker] : circuit_breakers_) {
@@ -199,6 +235,61 @@ public:
     }
     
 private:
+    std::string selectNode(const std::string& key) {
+        const auto nodes = hash_ring_.getAllNodes();
+        if (nodes.empty()) {
+            return "";
+        }
+        const std::string primary = hash_ring_.getNode(key);
+        if (routing_policy_ == "hash") {
+            return primary;
+        }
+        if (routing_policy_ == "bounded_load") {
+            int total = 0;
+            for (const auto& node : nodes) {
+                total += in_flight_.at(node)->load();
+            }
+            const double average = static_cast<double>(total) / nodes.size();
+            const int cap = std::max(1, static_cast<int>(std::ceil(average * load_factor_)));
+            if (in_flight_.at(primary)->load() < cap) {
+                return primary;
+            }
+        }
+        return leastLoaded(nodes);
+    }
+
+    std::string leastLoaded(const std::vector<std::string>& nodes) {
+        int best_load = std::numeric_limits<int>::max();
+        std::vector<std::string> candidates;
+        for (const auto& node : nodes) {
+            const int load = in_flight_.at(node)->load();
+            if (load < best_load) {
+                best_load = load;
+                candidates.clear();
+            }
+            if (load == best_load) {
+                candidates.push_back(node);
+            }
+        }
+        if (candidates.empty()) {
+            return "";
+        }
+        // Rotate equal-load ties so a sequential client that never has two
+        // requests in flight still spreads work across all workers.
+        const size_t index = tie_break_counter_.fetch_add(1) % candidates.size();
+        return candidates[index];
+    }
+
+    struct InFlightGuard {
+        std::atomic<int>* counter;
+        explicit InFlightGuard(std::atomic<int>* value) : counter(value) {
+            counter->fetch_add(1);
+        }
+        ~InFlightGuard() { counter->fetch_sub(1); }
+        InFlightGuard(const InFlightGuard&) = delete;
+        InFlightGuard& operator=(const InFlightGuard&) = delete;
+    };
+
     // Derive a stable ring key from the request's input data. Identical inputs
     // produce identical keys, so consistent hashing sends them to the same
     // worker. Falls back to request_id if input_data is absent.
@@ -245,10 +336,9 @@ private:
             breaker->recordFailure();
             return std::nullopt;
         }
+        InFlightGuard in_flight(in_flight_.at(node).get());
         
         try {
-            std::cout << "Sending request to " << node << std::endl;
-
             auto client = client_it->second->acquire();
             auto result = client->Post(
                 "/infer",
@@ -256,7 +346,6 @@ private:
                 "application/json"
             );
             if (result && result->status == 200) {
-                std::cout << "Success from " << node << std::endl;
                 breaker->recordSuccess();
                 // Forward the worker body unchanged. The gateway does not
                 // transform successful responses, so parsing and re-dumping
@@ -302,6 +391,7 @@ private:
             breaker->recordFailure();
             return std::nullopt;
         }
+        InFlightGuard in_flight(in_flight_.at(node).get());
         try {
             auto client = client_it->second->acquire();
             httplib::Headers headers{{"X-Request-Id", request_id}};
@@ -382,6 +472,10 @@ private:
     ConsistentHash hash_ring_;
     std::map<std::string, std::unique_ptr<CircuitBreaker>> circuit_breakers_;
     std::map<std::string, std::unique_ptr<ClientPool>> clients_;
+    std::map<std::string, std::unique_ptr<std::atomic<int>>> in_flight_;
+    std::string routing_policy_ = "hash";
+    double load_factor_ = 1.25;
+    std::atomic<size_t> tie_break_counter_{0};
 };
 
 int main(int argc, char** argv) {

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections import defaultdict
 from pathlib import Path
 
 
@@ -78,3 +79,37 @@ def markdown_table(summaries: list[dict]) -> str:
             )
         )
     return "\n".join(lines)
+
+
+def consistency(rows: list[dict]) -> dict:
+    """Compare outputs for repeated requests to the same labeled image."""
+    groups: dict[int, list[dict]] = defaultdict(list)
+    for row in rows:
+        if row.get("success") and row.get("output"):
+            groups[row["label_index"]].append(row)
+
+    conflicts = 0
+    multi_node = 0
+    max_abs_diff = 0.0
+    samples = 0
+    for items in groups.values():
+        samples += len(items)
+        outputs = [item["output"] for item in items]
+        top1 = {max(range(len(output)), key=output.__getitem__) for output in outputs}
+        if len(top1) > 1:
+            conflicts += 1
+        reference = outputs[0]
+        for output in outputs[1:]:
+            for left, right in zip(reference, output):
+                max_abs_diff = max(max_abs_diff, abs(left - right))
+        nodes = {item.get("node_id") for item in items if item.get("node_id")}
+        if len(nodes) > 1:
+            multi_node += 1
+
+    return {
+        "samples": samples,
+        "labels": len(groups),
+        "top1_conflicts": conflicts,
+        "multi_node_labels": multi_node,
+        "max_abs_diff": round(max_abs_diff, 8),
+    }

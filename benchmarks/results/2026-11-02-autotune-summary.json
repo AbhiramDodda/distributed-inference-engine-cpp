@@ -1,0 +1,1932 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-02",
+  "dataset": {
+    "name": "Small ImageNet Validation Subset",
+    "commit": "c55ca047bd854ba01d3af6c283c034924a644db2",
+    "count": 500,
+    "selection": "one image per class, class indices 0-499",
+    "preprocess": "resize-shortest-256, center-crop-224, ImageNet mean/std, NCHW float32"
+  },
+  "hardware": {
+    "worker_gateway": "c6i.large",
+    "load_generator": "c6i.xlarge",
+    "region": "us-east-1",
+    "workers_tested": [
+      1,
+      2,
+      4,
+      8
+    ]
+  },
+  "slo": {
+    "availability": 0.999,
+    "p95_ms": 500,
+    "p99_ms": 1000,
+    "error_rate": 0.001,
+    "cpu_percent": 80,
+    "hold_seconds": 300
+  },
+  "method": {
+    "capacity_workload": "cold cache, unique 500-image workload, fresh services per level",
+    "cache_capacity": 1,
+    "transport": "raw float32 /infer_tensor",
+    "routing": "least-loaded unless labeled hash",
+    "requests_per_level": 500,
+    "accuracy": "500 labeled images, top-1/top-5 from real model outputs"
+  },
+  "capacity": {
+    "1w_hash": [
+      {
+        "concurrency": 1,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 11.616,
+        "latency_ms": {
+          "p50": 85.78,
+          "p95": 87.15,
+          "p99": 88.505
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 1.0,
+        "client_cpu_percent": 1.18,
+        "within_slo": true
+      },
+      {
+        "concurrency": 4,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 13.542,
+        "latency_ms": {
+          "p50": 294.97,
+          "p95": 298.158,
+          "p99": 307.473
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 4.0,
+        "client_cpu_percent": 1.34,
+        "within_slo": true
+      },
+      {
+        "concurrency": 16,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 13.612,
+        "latency_ms": {
+          "p50": 1175.045,
+          "p95": 1245.062,
+          "p99": 1309.485
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 8.75,
+        "client_cpu_percent": 1.32,
+        "within_slo": false
+      },
+      {
+        "concurrency": 64,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 13.378,
+        "latency_ms": {
+          "p50": 4721.88,
+          "p95": 7090.652,
+          "p99": 9295.867
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 22.25,
+        "client_cpu_percent": 1.32,
+        "within_slo": false
+      },
+      {
+        "concurrency": 128,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 13.295,
+        "latency_ms": {
+          "p50": 9615.494,
+          "p95": 10352.426,
+          "p99": 17265.945
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 19.48,
+        "client_cpu_percent": 1.31,
+        "within_slo": false
+      }
+    ],
+    "2w_hash": [
+      {
+        "concurrency": 1,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 9.915,
+        "latency_ms": {
+          "p50": 100.655,
+          "p95": 103.853,
+          "p99": 105.756
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 1.0,
+        "client_cpu_percent": 1.24,
+        "within_slo": true
+      },
+      {
+        "concurrency": 4,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 17.523,
+        "latency_ms": {
+          "p50": 236.848,
+          "p95": 355.15,
+          "p99": 370.046
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 1.68,
+        "client_cpu_percent": 2.05,
+        "within_slo": true
+      },
+      {
+        "concurrency": 16,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 18.507,
+        "latency_ms": {
+          "p50": 936.326,
+          "p95": 1373.667,
+          "p99": 1669.489
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 6.12,
+        "client_cpu_percent": 2.04,
+        "within_slo": false
+      },
+      {
+        "concurrency": 64,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 18.485,
+        "latency_ms": {
+          "p50": 2893.405,
+          "p95": 5592.034,
+          "p99": 7618.123
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 16.97,
+        "client_cpu_percent": 1.86,
+        "within_slo": false
+      },
+      {
+        "concurrency": 128,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 18.453,
+        "latency_ms": {
+          "p50": 5728.057,
+          "p95": 11601.134,
+          "p99": 14935.95
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 22.34,
+        "client_cpu_percent": 1.9,
+        "within_slo": false
+      }
+    ],
+    "4w_hash": [
+      {
+        "concurrency": 1,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 9.786,
+        "latency_ms": {
+          "p50": 101.862,
+          "p95": 104.287,
+          "p99": 107.449
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 1.0,
+        "client_cpu_percent": 0.98,
+        "within_slo": true
+      },
+      {
+        "concurrency": 4,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 23.489,
+        "latency_ms": {
+          "p50": 158.151,
+          "p95": 343.156,
+          "p99": 370.152
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 1.42,
+        "client_cpu_percent": 2.26,
+        "within_slo": true
+      },
+      {
+        "concurrency": 16,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 28.559,
+        "latency_ms": {
+          "p50": 400.356,
+          "p95": 1438.486,
+          "p99": 1454.187
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 4.02,
+        "client_cpu_percent": 2.79,
+        "within_slo": false
+      },
+      {
+        "concurrency": 64,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 28.424,
+        "latency_ms": {
+          "p50": 1952.186,
+          "p95": 5169.316,
+          "p99": 5763.012
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 13.38,
+        "client_cpu_percent": 2.8,
+        "within_slo": false
+      },
+      {
+        "concurrency": 128,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 28.569,
+        "latency_ms": {
+          "p50": 3294.033,
+          "p95": 7673.224,
+          "p99": 8201.597
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 15.03,
+        "client_cpu_percent": 2.72,
+        "within_slo": false
+      },
+      {
+        "concurrency": 256,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 28.178,
+        "latency_ms": {
+          "p50": 6266.937,
+          "p95": 11359.788,
+          "p99": 12191.989
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 20.84,
+        "client_cpu_percent": 2.76,
+        "within_slo": false
+      }
+    ],
+    "8w_hash": [
+      {
+        "concurrency": 1,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 9.981,
+        "latency_ms": {
+          "p50": 101.926,
+          "p95": 107.198,
+          "p99": 109.142
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 1.0,
+        "client_cpu_percent": 1.19,
+        "within_slo": true
+      },
+      {
+        "concurrency": 4,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 31.438,
+        "latency_ms": {
+          "p50": 103.49,
+          "p95": 232.969,
+          "p99": 325.554
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 1.18,
+        "client_cpu_percent": 3.35,
+        "within_slo": true
+      },
+      {
+        "concurrency": 16,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 48.208,
+        "latency_ms": {
+          "p50": 184.995,
+          "p95": 1074.296,
+          "p99": 1377.873
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 2.46,
+        "client_cpu_percent": 4.93,
+        "within_slo": false
+      },
+      {
+        "concurrency": 64,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 49.627,
+        "latency_ms": {
+          "p50": 754.797,
+          "p95": 3462.495,
+          "p99": 4211.225
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 7.06,
+        "client_cpu_percent": 5.11,
+        "within_slo": false
+      },
+      {
+        "concurrency": 128,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 48.851,
+        "latency_ms": {
+          "p50": 1726.19,
+          "p95": 4649.988,
+          "p99": 5489.287
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 12.22,
+        "client_cpu_percent": 4.87,
+        "within_slo": false
+      }
+    ],
+    "2w_least": [
+      {
+        "concurrency": 1,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 9.953,
+        "latency_ms": {
+          "p50": 100.199,
+          "p95": 101.914,
+          "p99": 103.276
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 1.0,
+        "client_cpu_percent": 1.24,
+        "within_slo": true
+      },
+      {
+        "concurrency": 4,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 21.919,
+        "latency_ms": {
+          "p50": 181.895,
+          "p95": 185.168,
+          "p99": 190.694
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 2.0,
+        "client_cpu_percent": 2.48,
+        "within_slo": true
+      },
+      {
+        "concurrency": 16,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 22.593,
+        "latency_ms": {
+          "p50": 701.787,
+          "p95": 719.005,
+          "p99": 751.793
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 4.24,
+        "client_cpu_percent": 2.44,
+        "within_slo": false
+      },
+      {
+        "concurrency": 64,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 22.302,
+        "latency_ms": {
+          "p50": 2811.021,
+          "p95": 3001.951,
+          "p99": 3673.226
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 24.34,
+        "client_cpu_percent": 2.25,
+        "within_slo": false
+      },
+      {
+        "concurrency": 128,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 22.435,
+        "latency_ms": {
+          "p50": 5623.671,
+          "p95": 8501.328,
+          "p99": 11293.962
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 23.19,
+        "client_cpu_percent": 2.19,
+        "within_slo": false
+      }
+    ],
+    "4w_least": [
+      {
+        "concurrency": 1,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 9.919,
+        "latency_ms": {
+          "p50": 102.955,
+          "p95": 107.691,
+          "p99": 108.652
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 1.0,
+        "client_cpu_percent": 1.03,
+        "within_slo": true
+      },
+      {
+        "concurrency": 4,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 39.958,
+        "latency_ms": {
+          "p50": 103.085,
+          "p95": 106.997,
+          "p99": 108.584
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 1.0,
+        "client_cpu_percent": 3.91,
+        "within_slo": true
+      },
+      {
+        "concurrency": 16,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 45.659,
+        "latency_ms": {
+          "p50": 362.964,
+          "p95": 380.95,
+          "p99": 406.624
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 3.43,
+        "client_cpu_percent": 4.43,
+        "within_slo": true
+      },
+      {
+        "concurrency": 64,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 44.312,
+        "latency_ms": {
+          "p50": 1391.111,
+          "p95": 1570.237,
+          "p99": 1619.882
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 11.55,
+        "client_cpu_percent": 4.36,
+        "within_slo": false
+      },
+      {
+        "concurrency": 128,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 41.213,
+        "latency_ms": {
+          "p50": 2901.302,
+          "p95": 3280.055,
+          "p99": 3300.343
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 23.49,
+        "client_cpu_percent": 4.01,
+        "within_slo": false
+      },
+      {
+        "concurrency": 256,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 40.741,
+        "latency_ms": {
+          "p50": 5313.192,
+          "p95": 6541.546,
+          "p99": 9057.647
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 21.6,
+        "client_cpu_percent": 4.26,
+        "within_slo": false
+      }
+    ],
+    "8w_least": [
+      {
+        "concurrency": 1,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 9.8,
+        "latency_ms": {
+          "p50": 101.684,
+          "p95": 105.297,
+          "p99": 112.465
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 1.0,
+        "client_cpu_percent": 1.21,
+        "within_slo": true
+      },
+      {
+        "concurrency": 4,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 40.27,
+        "latency_ms": {
+          "p50": 101.062,
+          "p95": 104.461,
+          "p99": 106.582
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 1.0,
+        "client_cpu_percent": 4.77,
+        "within_slo": true
+      },
+      {
+        "concurrency": 16,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 86.066,
+        "latency_ms": {
+          "p50": 181.655,
+          "p95": 194.125,
+          "p99": 218.976
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 1.5,
+        "client_cpu_percent": 9.28,
+        "within_slo": true
+      },
+      {
+        "concurrency": 64,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 84.387,
+        "latency_ms": {
+          "p50": 720.462,
+          "p95": 836.964,
+          "p99": 873.024
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 5.69,
+        "client_cpu_percent": 8.51,
+        "within_slo": false
+      },
+      {
+        "concurrency": 128,
+        "requests": 500,
+        "successes": 500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 79.408,
+        "latency_ms": {
+          "p50": 1440.564,
+          "p95": 1739.405,
+          "p99": 1784.587
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 11.74,
+        "client_cpu_percent": 7.76,
+        "within_slo": false
+      }
+    ]
+  },
+  "models": [
+    {
+      "id": "shufflenetv2-10",
+      "accuracy": {
+        "samples": 500,
+        "top1": 0.722,
+        "top5": 0.906
+      },
+      "accuracy_run": "infer-38fce5baffb45b73",
+      "batch_dimension": "static",
+      "effective_max_batch": 1,
+      "capacity_run": "infer-38fce5baffb45b73",
+      "levels": [
+        {
+          "concurrency": 4,
+          "requests": 200,
+          "successes": 200,
+          "failures": 0,
+          "error_rate": 0.0,
+          "requests_per_second": 201.355,
+          "latency_ms": {
+            "p50": 19.643,
+            "p95": 22.238,
+            "p99": 24.486
+          },
+          "cache_hit_rate": 0.0,
+          "batch_size_mean": 1.0,
+          "client_cpu_percent": 29.05,
+          "within_slo": true
+        },
+        {
+          "concurrency": 16,
+          "requests": 200,
+          "successes": 200,
+          "failures": 0,
+          "error_rate": 0.0,
+          "requests_per_second": 194.881,
+          "latency_ms": {
+            "p50": 78.665,
+            "p95": 86.572,
+            "p99": 115.287
+          },
+          "cache_hit_rate": 0.0,
+          "batch_size_mean": 1.0,
+          "client_cpu_percent": 28.25,
+          "within_slo": true
+        },
+        {
+          "concurrency": 64,
+          "requests": 200,
+          "successes": 200,
+          "failures": 0,
+          "error_rate": 0.0,
+          "requests_per_second": 185.18,
+          "latency_ms": {
+            "p50": 306.188,
+            "p95": 415.813,
+            "p99": 484.343
+          },
+          "cache_hit_rate": 0.0,
+          "batch_size_mean": 1.0,
+          "client_cpu_percent": 26.25,
+          "within_slo": true
+        }
+      ]
+    },
+    {
+      "id": "mobilenetv2-7",
+      "accuracy": {
+        "samples": 500,
+        "top1": 0.718,
+        "top5": 0.908
+      },
+      "accuracy_run": "infer-abece6d2475cf3b2",
+      "batch_dimension": "static",
+      "effective_max_batch": 1,
+      "capacity_run": "infer-abece6d2475cf3b2",
+      "levels": [
+        {
+          "concurrency": 4,
+          "requests": 200,
+          "successes": 200,
+          "failures": 0,
+          "error_rate": 0.0,
+          "requests_per_second": 68.712,
+          "latency_ms": {
+            "p50": 56.742,
+            "p95": 63.697,
+            "p99": 65.125
+          },
+          "cache_hit_rate": 0.0,
+          "batch_size_mean": 1.0,
+          "client_cpu_percent": 10.07,
+          "within_slo": true
+        },
+        {
+          "concurrency": 16,
+          "requests": 200,
+          "successes": 200,
+          "failures": 0,
+          "error_rate": 0.0,
+          "requests_per_second": 68.014,
+          "latency_ms": {
+            "p50": 222.658,
+            "p95": 248.209,
+            "p99": 250.451
+          },
+          "cache_hit_rate": 0.0,
+          "batch_size_mean": 1.0,
+          "client_cpu_percent": 9.88,
+          "within_slo": true
+        },
+        {
+          "concurrency": 64,
+          "requests": 200,
+          "successes": 200,
+          "failures": 0,
+          "error_rate": 0.0,
+          "requests_per_second": 65.502,
+          "latency_ms": {
+            "p50": 880.034,
+            "p95": 978.0,
+            "p99": 1053.246
+          },
+          "cache_hit_rate": 0.0,
+          "batch_size_mean": 1.0,
+          "client_cpu_percent": 9.18,
+          "within_slo": false
+        }
+      ]
+    },
+    {
+      "id": "resnet18-v2-7",
+      "accuracy": {
+        "samples": 500,
+        "top1": 0.716,
+        "top5": 0.906
+      },
+      "accuracy_run": "infer-af28a46c98b37890",
+      "batch_dimension": "dynamic",
+      "effective_max_batch": 32,
+      "capacity_run": "infer-af28a46c98b37890",
+      "levels": [
+        {
+          "concurrency": 4,
+          "requests": 200,
+          "successes": 200,
+          "failures": 0,
+          "error_rate": 0.0,
+          "requests_per_second": 41.996,
+          "latency_ms": {
+            "p50": 94.215,
+            "p95": 97.634,
+            "p99": 103.978
+          },
+          "cache_hit_rate": 0.0,
+          "batch_size_mean": 2.0,
+          "client_cpu_percent": 7.15,
+          "within_slo": true
+        },
+        {
+          "concurrency": 16,
+          "requests": 200,
+          "successes": 200,
+          "failures": 0,
+          "error_rate": 0.0,
+          "requests_per_second": 47.02,
+          "latency_ms": {
+            "p50": 330.127,
+            "p95": 338.832,
+            "p99": 413.356
+          },
+          "cache_hit_rate": 0.0,
+          "batch_size_mean": 5.16,
+          "client_cpu_percent": 7.39,
+          "within_slo": true
+        },
+        {
+          "concurrency": 64,
+          "requests": 200,
+          "successes": 200,
+          "failures": 0,
+          "error_rate": 0.0,
+          "requests_per_second": 46.387,
+          "latency_ms": {
+            "p50": 1339.263,
+            "p95": 1472.533,
+            "p99": 1480.951
+          },
+          "cache_hit_rate": 0.0,
+          "batch_size_mean": 26.15,
+          "client_cpu_percent": 6.93,
+          "within_slo": false
+        }
+      ]
+    },
+    {
+      "id": "resnet34-v2-7",
+      "accuracy": {
+        "samples": 500,
+        "top1": 0.762,
+        "top5": 0.922
+      },
+      "accuracy_run": "infer-d41d6985fa110f4f",
+      "batch_dimension": "dynamic",
+      "effective_max_batch": 32,
+      "capacity_run": "infer-d41d6985fa110f4f",
+      "levels": [
+        {
+          "concurrency": 4,
+          "requests": 200,
+          "successes": 200,
+          "failures": 0,
+          "error_rate": 0.0,
+          "requests_per_second": 27.576,
+          "latency_ms": {
+            "p50": 144.502,
+            "p95": 147.887,
+            "p99": 151.911
+          },
+          "cache_hit_rate": 0.0,
+          "batch_size_mean": 2.0,
+          "client_cpu_percent": 4.17,
+          "within_slo": true
+        },
+        {
+          "concurrency": 16,
+          "requests": 200,
+          "successes": 200,
+          "failures": 0,
+          "error_rate": 0.0,
+          "requests_per_second": 29.539,
+          "latency_ms": {
+            "p50": 520.559,
+            "p95": 550.277,
+            "p99": 558.884
+          },
+          "cache_hit_rate": 0.0,
+          "batch_size_mean": 5.12,
+          "client_cpu_percent": 4.31,
+          "within_slo": false
+        },
+        {
+          "concurrency": 64,
+          "requests": 200,
+          "successes": 200,
+          "failures": 0,
+          "error_rate": 0.0,
+          "requests_per_second": 29.437,
+          "latency_ms": {
+            "p50": 2138.438,
+            "p95": 2302.177,
+            "p99": 2315.451
+          },
+          "cache_hit_rate": 0.0,
+          "batch_size_mean": 26.42,
+          "client_cpu_percent": 4.16,
+          "within_slo": false
+        }
+      ]
+    },
+    {
+      "id": "resnet50-v2-7",
+      "accuracy": {
+        "samples": 500,
+        "top1": 0.786,
+        "top5": 0.942
+      },
+      "accuracy_run": "infer-5fd1ee38b8821e83",
+      "batch_dimension": "dynamic",
+      "effective_max_batch": 32,
+      "capacity_run": "infer-7bcee360549dabf9",
+      "levels": [
+        {
+          "concurrency": 1,
+          "requests": 500,
+          "successes": 500,
+          "failures": 0,
+          "error_rate": 0.0,
+          "requests_per_second": 9.953,
+          "latency_ms": {
+            "p50": 100.199,
+            "p95": 101.914,
+            "p99": 103.276
+          },
+          "cache_hit_rate": 0.0,
+          "batch_size_mean": 1.0,
+          "client_cpu_percent": 1.24,
+          "within_slo": true
+        },
+        {
+          "concurrency": 4,
+          "requests": 500,
+          "successes": 500,
+          "failures": 0,
+          "error_rate": 0.0,
+          "requests_per_second": 21.919,
+          "latency_ms": {
+            "p50": 181.895,
+            "p95": 185.168,
+            "p99": 190.694
+          },
+          "cache_hit_rate": 0.0,
+          "batch_size_mean": 2.0,
+          "client_cpu_percent": 2.48,
+          "within_slo": true
+        },
+        {
+          "concurrency": 16,
+          "requests": 500,
+          "successes": 500,
+          "failures": 0,
+          "error_rate": 0.0,
+          "requests_per_second": 22.593,
+          "latency_ms": {
+            "p50": 701.787,
+            "p95": 719.005,
+            "p99": 751.793
+          },
+          "cache_hit_rate": 0.0,
+          "batch_size_mean": 4.24,
+          "client_cpu_percent": 2.44,
+          "within_slo": false
+        },
+        {
+          "concurrency": 64,
+          "requests": 500,
+          "successes": 500,
+          "failures": 0,
+          "error_rate": 0.0,
+          "requests_per_second": 22.302,
+          "latency_ms": {
+            "p50": 2811.021,
+            "p95": 3001.951,
+            "p99": 3673.226
+          },
+          "cache_hit_rate": 0.0,
+          "batch_size_mean": 24.34,
+          "client_cpu_percent": 2.25,
+          "within_slo": false
+        },
+        {
+          "concurrency": 128,
+          "requests": 500,
+          "successes": 500,
+          "failures": 0,
+          "error_rate": 0.0,
+          "requests_per_second": 22.435,
+          "latency_ms": {
+            "p50": 5623.671,
+            "p95": 8501.328,
+            "p99": 11293.962
+          },
+          "cache_hit_rate": 0.0,
+          "batch_size_mean": 23.19,
+          "client_cpu_percent": 2.19,
+          "within_slo": false
+        }
+      ]
+    }
+  ],
+  "verified_sustained_slo": {
+    "1w_7_rps": {
+      "summary": {
+        "mode": "unique",
+        "transport": "binary",
+        "concurrency": 128,
+        "rate": 7.0,
+        "requests": 2100,
+        "successes": 2100,
+        "failures": 0,
+        "error_rate": 0.0,
+        "wall_seconds": 299.96,
+        "successful_requests_per_second": 7.001,
+        "latency_ms": {
+          "p50": 100.79,
+          "p95": 102.079,
+          "p99": 102.762
+        },
+        "cache_hits": 0,
+        "cache_hit_rate": 0.0,
+        "node_counts": {
+          "worker_1": 2100
+        },
+        "batch_size_mean": 1.0,
+        "client_cpu_percent": 0.65,
+        "slo": {
+          "p95_ms": 500,
+          "p99_ms": 1000,
+          "error_rate": 0.001,
+          "within_slo": true
+        },
+        "errors": []
+      },
+      "cpu": {
+        "workers": [
+          {
+            "worker": "worker-1-vmstat.txt",
+            "mean": 67.5,
+            "p95": 69,
+            "max": 77
+          }
+        ],
+        "max_worker_mean": 67.5,
+        "max_worker_p95": 69,
+        "max_sample": 77
+      }
+    },
+    "2w_12_rps": {
+      "summary": {
+        "mode": "unique",
+        "transport": "binary",
+        "concurrency": 128,
+        "rate": 12.0,
+        "requests": 3600,
+        "successes": 3600,
+        "failures": 0,
+        "error_rate": 0.0,
+        "wall_seconds": 300.02,
+        "successful_requests_per_second": 11.999,
+        "latency_ms": {
+          "p50": 101.524,
+          "p95": 103.629,
+          "p99": 105.178
+        },
+        "cache_hits": 0,
+        "cache_hit_rate": 0.0,
+        "node_counts": {
+          "worker_1": 1800,
+          "worker_2": 1800
+        },
+        "batch_size_mean": 1.0,
+        "client_cpu_percent": 1.09,
+        "slo": {
+          "p95_ms": 500,
+          "p99_ms": 1000,
+          "error_rate": 0.001,
+          "within_slo": true
+        },
+        "errors": []
+      },
+      "cpu": {
+        "workers": [
+          {
+            "worker": "worker-1-vmstat.txt",
+            "mean": 58.6,
+            "p95": 60,
+            "max": 67
+          },
+          {
+            "worker": "worker-2-vmstat.txt",
+            "mean": 58.0,
+            "p95": 60,
+            "max": 64
+          }
+        ],
+        "max_worker_mean": 58.6,
+        "max_worker_p95": 60,
+        "max_sample": 67
+      }
+    },
+    "4w_24_rps": {
+      "summary": {
+        "mode": "unique",
+        "transport": "binary",
+        "concurrency": 128,
+        "rate": 24.0,
+        "requests": 7200,
+        "successes": 7200,
+        "failures": 0,
+        "error_rate": 0.0,
+        "wall_seconds": 300.051,
+        "successful_requests_per_second": 23.996,
+        "latency_ms": {
+          "p50": 89.077,
+          "p95": 102.642,
+          "p99": 104.703
+        },
+        "cache_hits": 0,
+        "cache_hit_rate": 0.0,
+        "node_counts": {
+          "worker_1": 1789,
+          "worker_3": 1813,
+          "worker_4": 1811,
+          "worker_2": 1787
+        },
+        "batch_size_mean": 1.0,
+        "client_cpu_percent": 1.9,
+        "slo": {
+          "p95_ms": 500,
+          "p99_ms": 1000,
+          "error_rate": 0.001,
+          "within_slo": true
+        },
+        "errors": []
+      },
+      "cpu": {
+        "workers": [
+          {
+            "worker": "worker-1-vmstat.txt",
+            "mean": 57.1,
+            "p95": 59,
+            "max": 65
+          },
+          {
+            "worker": "worker-2-vmstat.txt",
+            "mean": 58.2,
+            "p95": 60,
+            "max": 65
+          },
+          {
+            "worker": "worker-3-vmstat.txt",
+            "mean": 50.5,
+            "p95": 55,
+            "max": 58
+          },
+          {
+            "worker": "worker-4-vmstat.txt",
+            "mean": 50.6,
+            "p95": 55,
+            "max": 59
+          }
+        ],
+        "max_worker_mean": 58.2,
+        "max_worker_p95": 60,
+        "max_sample": 65
+      }
+    },
+    "8w_45_rps": {
+      "summary": {
+        "mode": "unique",
+        "transport": "binary",
+        "concurrency": 128,
+        "rate": 45.0,
+        "requests": 13500,
+        "successes": 13500,
+        "failures": 0,
+        "error_rate": 0.0,
+        "wall_seconds": 300.091,
+        "successful_requests_per_second": 44.986,
+        "latency_ms": {
+          "p50": 101.03,
+          "p95": 104.044,
+          "p99": 105.779
+        },
+        "cache_hits": 0,
+        "cache_hit_rate": 0.0,
+        "node_counts": {
+          "worker_7": 1690,
+          "worker_4": 1686,
+          "worker_6": 1689,
+          "worker_2": 1688,
+          "worker_1": 1685,
+          "worker_8": 1687,
+          "worker_5": 1688,
+          "worker_3": 1687
+        },
+        "batch_size_mean": 1.0,
+        "client_cpu_percent": 2.86,
+        "slo": {
+          "p95_ms": 500,
+          "p99_ms": 1000,
+          "error_rate": 0.001,
+          "within_slo": true
+        },
+        "errors": []
+      },
+      "cpu": {
+        "workers": [
+          {
+            "worker": "worker-1-vmstat.txt",
+            "mean": 54.6,
+            "p95": 59,
+            "max": 61
+          },
+          {
+            "worker": "worker-2-vmstat.txt",
+            "mean": 54.7,
+            "p95": 59,
+            "max": 64
+          },
+          {
+            "worker": "worker-3-vmstat.txt",
+            "mean": 55.8,
+            "p95": 60,
+            "max": 62
+          },
+          {
+            "worker": "worker-4-vmstat.txt",
+            "mean": 54.1,
+            "p95": 58,
+            "max": 62
+          },
+          {
+            "worker": "worker-5-vmstat.txt",
+            "mean": 54.6,
+            "p95": 59,
+            "max": 61
+          },
+          {
+            "worker": "worker-6-vmstat.txt",
+            "mean": 54.6,
+            "p95": 59,
+            "max": 67
+          },
+          {
+            "worker": "worker-7-vmstat.txt",
+            "mean": 54.7,
+            "p95": 59,
+            "max": 62
+          },
+          {
+            "worker": "worker-8-vmstat.txt",
+            "mean": 54.4,
+            "p95": 59,
+            "max": 65
+          }
+        ],
+        "max_worker_mean": 55.8,
+        "max_worker_p95": 60,
+        "max_sample": 67
+      }
+    },
+    "8w_50_rps_marginal_cpu": {
+      "summary": {
+        "mode": "unique",
+        "transport": "binary",
+        "concurrency": 128,
+        "rate": 50.0,
+        "requests": 15000,
+        "successes": 15000,
+        "failures": 0,
+        "error_rate": 0.0,
+        "wall_seconds": 300.094,
+        "successful_requests_per_second": 49.984,
+        "latency_ms": {
+          "p50": 100.817,
+          "p95": 108.769,
+          "p99": 111.154
+        },
+        "cache_hits": 0,
+        "cache_hit_rate": 0.0,
+        "node_counts": {
+          "worker_5": 1792,
+          "worker_1": 1519,
+          "worker_8": 2145,
+          "worker_2": 1966,
+          "worker_3": 1883,
+          "worker_6": 1830,
+          "worker_4": 1907,
+          "worker_7": 1958
+        },
+        "batch_size_mean": 1.0,
+        "client_cpu_percent": 3.18,
+        "slo": {
+          "p95_ms": 500,
+          "p99_ms": 1000,
+          "error_rate": 0.001,
+          "within_slo": true
+        },
+        "errors": []
+      },
+      "cpu": {
+        "workers": [
+          {
+            "worker": "worker-1-vmstat.txt",
+            "mean": 49.0,
+            "p95": 62,
+            "max": 78
+          },
+          {
+            "worker": "worker-2-vmstat.txt",
+            "mean": 62.9,
+            "p95": 72,
+            "max": 81
+          },
+          {
+            "worker": "worker-3-vmstat.txt",
+            "mean": 59.8,
+            "p95": 68,
+            "max": 76
+          },
+          {
+            "worker": "worker-4-vmstat.txt",
+            "mean": 60.0,
+            "p95": 70,
+            "max": 76
+          },
+          {
+            "worker": "worker-5-vmstat.txt",
+            "mean": 58.2,
+            "p95": 67,
+            "max": 73
+          },
+          {
+            "worker": "worker-6-vmstat.txt",
+            "mean": 63.8,
+            "p95": 72,
+            "max": 79
+          },
+          {
+            "worker": "worker-7-vmstat.txt",
+            "mean": 63.6,
+            "p95": 72,
+            "max": 81
+          },
+          {
+            "worker": "worker-8-vmstat.txt",
+            "mean": 67.0,
+            "p95": 80,
+            "max": 82
+          }
+        ],
+        "max_worker_mean": 67.0,
+        "max_worker_p95": 80,
+        "max_sample": 82
+      }
+    },
+    "8w_60_rps_cpu_fail": {
+      "summary": {
+        "mode": "unique",
+        "transport": "binary",
+        "concurrency": 128,
+        "rate": 60.0,
+        "requests": 18000,
+        "successes": 18000,
+        "failures": 0,
+        "error_rate": 0.0,
+        "wall_seconds": 300.099,
+        "successful_requests_per_second": 59.98,
+        "latency_ms": {
+          "p50": 101.07,
+          "p95": 107.826,
+          "p99": 110.388
+        },
+        "cache_hits": 0,
+        "cache_hit_rate": 0.0,
+        "node_counts": {
+          "worker_2": 2621,
+          "worker_1": 1997,
+          "worker_5": 2468,
+          "worker_8": 2380,
+          "worker_7": 1808,
+          "worker_6": 2756,
+          "worker_3": 2284,
+          "worker_4": 1686
+        },
+        "batch_size_mean": 1.0,
+        "client_cpu_percent": 2.92,
+        "slo": {
+          "p95_ms": 500,
+          "p99_ms": 1000,
+          "error_rate": 0.001,
+          "within_slo": true
+        },
+        "errors": []
+      },
+      "cpu": {
+        "workers": [
+          {
+            "worker": "worker-1-vmstat.txt",
+            "mean": 63.0,
+            "p95": 77,
+            "max": 82
+          },
+          {
+            "worker": "worker-2-vmstat.txt",
+            "mean": 82.7,
+            "p95": 94,
+            "max": 95
+          },
+          {
+            "worker": "worker-3-vmstat.txt",
+            "mean": 73.1,
+            "p95": 83,
+            "max": 91
+          },
+          {
+            "worker": "worker-4-vmstat.txt",
+            "mean": 55.1,
+            "p95": 75,
+            "max": 83
+          },
+          {
+            "worker": "worker-5-vmstat.txt",
+            "mean": 77.6,
+            "p95": 90,
+            "max": 95
+          },
+          {
+            "worker": "worker-6-vmstat.txt",
+            "mean": 86.3,
+            "p95": 95,
+            "max": 95
+          },
+          {
+            "worker": "worker-7-vmstat.txt",
+            "mean": 62.5,
+            "p95": 74,
+            "max": 79
+          },
+          {
+            "worker": "worker-8-vmstat.txt",
+            "mean": 75.1,
+            "p95": 90,
+            "max": 95
+          }
+        ],
+        "max_worker_mean": 86.3,
+        "max_worker_p95": 95,
+        "max_sample": 95
+      }
+    }
+  },
+  "latency_only_hold": {
+    "84_rps_cold": {
+      "summary": {
+        "mode": "unique",
+        "transport": "binary",
+        "concurrency": 128,
+        "rate": 84.0,
+        "requests": 25200,
+        "successes": 25200,
+        "failures": 0,
+        "error_rate": 0.0,
+        "wall_seconds": 300.111,
+        "successful_requests_per_second": 83.969,
+        "latency_ms": {
+          "p50": 119.17,
+          "p95": 176.647,
+          "p99": 183.395
+        },
+        "cache_hits": 0,
+        "cache_hit_rate": 0.0,
+        "node_counts": {
+          "worker_8": 3128,
+          "worker_5": 3123,
+          "worker_4": 3171,
+          "worker_2": 3150,
+          "worker_7": 3138,
+          "worker_6": 3192,
+          "worker_1": 3141,
+          "worker_3": 3157
+        },
+        "batch_size_mean": 1.01,
+        "client_cpu_percent": 3.93,
+        "slo": {
+          "p95_ms": 500,
+          "p99_ms": 1000,
+          "error_rate": 0.001,
+          "within_slo": true
+        },
+        "errors": []
+      },
+      "cpu": {
+        "workers": [
+          {
+            "worker": "worker-1-vmstat.txt",
+            "mean": 94.3,
+            "p95": 99,
+            "max": 100
+          },
+          {
+            "worker": "worker-2-vmstat.txt",
+            "mean": 94.7,
+            "p95": 99,
+            "max": 101
+          },
+          {
+            "worker": "worker-3-vmstat.txt",
+            "mean": 94.6,
+            "p95": 99,
+            "max": 100
+          },
+          {
+            "worker": "worker-4-vmstat.txt",
+            "mean": 94.4,
+            "p95": 99,
+            "max": 100
+          },
+          {
+            "worker": "worker-5-vmstat.txt",
+            "mean": 94.4,
+            "p95": 98,
+            "max": 100
+          },
+          {
+            "worker": "worker-6-vmstat.txt",
+            "mean": 94.7,
+            "p95": 99,
+            "max": 100
+          },
+          {
+            "worker": "worker-7-vmstat.txt",
+            "mean": 93.7,
+            "p95": 99,
+            "max": 100
+          },
+          {
+            "worker": "worker-8-vmstat.txt",
+            "mean": 94.8,
+            "p95": 100,
+            "max": 101
+          }
+        ],
+        "max_worker_mean": 94.8,
+        "max_worker_p95": 100,
+        "max_sample": 101
+      }
+    },
+    "69_rps_cold": {
+      "summary": {
+        "mode": "mixed",
+        "transport": "binary",
+        "concurrency": 128,
+        "rate": 69.0,
+        "requests": 20700,
+        "successes": 20700,
+        "failures": 0,
+        "error_rate": 0.0,
+        "wall_seconds": 300.104,
+        "successful_requests_per_second": 68.976,
+        "latency_ms": {
+          "p50": 100.792,
+          "p95": 108.538,
+          "p99": 110.43
+        },
+        "cache_hits": 0,
+        "cache_hit_rate": 0.0,
+        "node_counts": {
+          "worker_5": 2586,
+          "worker_1": 2588,
+          "worker_3": 2586,
+          "worker_6": 2585,
+          "worker_4": 2591,
+          "worker_7": 2591,
+          "worker_8": 2586,
+          "worker_2": 2587
+        },
+        "batch_size_mean": 1.0,
+        "client_cpu_percent": 3.89,
+        "slo": {
+          "p95_ms": 500,
+          "p99_ms": 1000,
+          "error_rate": 0.001,
+          "within_slo": true
+        },
+        "errors": []
+      },
+      "cpu": {
+        "workers": [
+          {
+            "worker": "worker-1-vmstat.txt",
+            "mean": 83.0,
+            "p95": 86,
+            "max": 88
+          },
+          {
+            "worker": "worker-2-vmstat.txt",
+            "mean": 83.5,
+            "p95": 86,
+            "max": 89
+          },
+          {
+            "worker": "worker-3-vmstat.txt",
+            "mean": 82.8,
+            "p95": 86,
+            "max": 90
+          },
+          {
+            "worker": "worker-4-vmstat.txt",
+            "mean": 80.3,
+            "p95": 85,
+            "max": 88
+          },
+          {
+            "worker": "worker-5-vmstat.txt",
+            "mean": 87.9,
+            "p95": 91,
+            "max": 92
+          },
+          {
+            "worker": "worker-6-vmstat.txt",
+            "mean": 88.2,
+            "p95": 92,
+            "max": 93
+          },
+          {
+            "worker": "worker-7-vmstat.txt",
+            "mean": 84.0,
+            "p95": 87,
+            "max": 92
+          },
+          {
+            "worker": "worker-8-vmstat.txt",
+            "mean": 83.3,
+            "p95": 87,
+            "max": 88
+          }
+        ],
+        "max_worker_mean": 88.2,
+        "max_worker_p95": 92,
+        "max_sample": 93
+      }
+    },
+    "86_rps_mixed": {
+      "summary": {
+        "mode": "mixed",
+        "transport": "binary",
+        "concurrency": 128,
+        "rate": 86.0,
+        "requests": 25800,
+        "successes": 25800,
+        "failures": 0,
+        "error_rate": 0.0,
+        "wall_seconds": 300.144,
+        "successful_requests_per_second": 85.959,
+        "latency_ms": {
+          "p50": 126.439,
+          "p95": 178.697,
+          "p99": 186.528
+        },
+        "cache_hits": 615,
+        "cache_hit_rate": 0.0238,
+        "node_counts": {
+          "worker_1": 3313,
+          "worker_4": 3208,
+          "worker_6": 3252,
+          "worker_8": 3220,
+          "worker_3": 3164,
+          "worker_7": 3171,
+          "worker_5": 3209,
+          "worker_2": 3263
+        },
+        "batch_size_mean": 1.02,
+        "client_cpu_percent": 5.05,
+        "slo": {
+          "p95_ms": 500,
+          "p99_ms": 1000,
+          "error_rate": 0.001,
+          "within_slo": true
+        },
+        "errors": []
+      },
+      "cpu": {
+        "workers": [
+          {
+            "worker": "worker-1-vmstat.txt",
+            "mean": 95.0,
+            "p95": 99,
+            "max": 100
+          },
+          {
+            "worker": "worker-2-vmstat.txt",
+            "mean": 94.6,
+            "p95": 99,
+            "max": 100
+          },
+          {
+            "worker": "worker-3-vmstat.txt",
+            "mean": 95.4,
+            "p95": 99,
+            "max": 101
+          },
+          {
+            "worker": "worker-4-vmstat.txt",
+            "mean": 94.9,
+            "p95": 99,
+            "max": 100
+          },
+          {
+            "worker": "worker-5-vmstat.txt",
+            "mean": 95.3,
+            "p95": 99,
+            "max": 100
+          },
+          {
+            "worker": "worker-6-vmstat.txt",
+            "mean": 95.3,
+            "p95": 99,
+            "max": 100
+          },
+          {
+            "worker": "worker-7-vmstat.txt",
+            "mean": 95.5,
+            "p95": 100,
+            "max": 101
+          },
+          {
+            "worker": "worker-8-vmstat.txt",
+            "mean": 95.1,
+            "p95": 100,
+            "max": 100
+          }
+        ],
+        "max_worker_mean": 95.5,
+        "max_worker_p95": 100,
+        "max_sample": 101
+      }
+    }
+  },
+  "failover": {
+    "summary": {
+      "mode": "repeated",
+      "transport": "binary",
+      "concurrency": 128,
+      "rate": 40.0,
+      "requests": 2400,
+      "successes": 2400,
+      "failures": 0,
+      "error_rate": 0.0,
+      "wall_seconds": 60.079,
+      "successful_requests_per_second": 39.947,
+      "latency_ms": {
+        "p50": 101.297,
+        "p95": 113.965,
+        "p99": 175.276
+      },
+      "cache_hits": 21,
+      "cache_hit_rate": 0.0088,
+      "node_counts": {
+        "worker_7": 506,
+        "worker_2": 367,
+        "worker_5": 366,
+        "worker_3": 408,
+        "worker_1": 35,
+        "worker_6": 157,
+        "worker_8": 155,
+        "worker_4": 406
+      },
+      "batch_size_mean": 1.01,
+      "client_cpu_percent": 2.78,
+      "slo": {
+        "p95_ms": 500,
+        "p99_ms": 1000,
+        "error_rate": 0.001,
+        "within_slo": true
+      },
+      "errors": []
+    },
+    "consistency": {
+      "samples": 2400,
+      "labels": 20,
+      "top1_conflicts": 0,
+      "multi_node_labels": 19,
+      "max_abs_diff": 0.0
+    }
+  },
+  "transport": {
+    "binary_repeated": [
+      {
+        "concurrency": 4,
+        "requests": 200,
+        "successes": 200,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 21.413,
+        "latency_ms": {
+          "p50": 184.844,
+          "p95": 196.814,
+          "p99": 203.65
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 2.0,
+        "client_cpu_percent": 2.93,
+        "within_slo": true
+      },
+      {
+        "concurrency": 16,
+        "requests": 200,
+        "successes": 200,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 23.054,
+        "latency_ms": {
+          "p50": 682.663,
+          "p95": 737.358,
+          "p99": 776.057
+        },
+        "cache_hit_rate": 0.01,
+        "batch_size_mean": 4.91,
+        "client_cpu_percent": 2.9,
+        "within_slo": false
+      }
+    ],
+    "json_repeated": [
+      {
+        "concurrency": 4,
+        "requests": 200,
+        "successes": 200,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 12.975,
+        "latency_ms": {
+          "p50": 303.922,
+          "p95": 345.377,
+          "p99": 457.264
+        },
+        "cache_hit_rate": 0.0,
+        "batch_size_mean": 1.01,
+        "client_cpu_percent": 101.23,
+        "within_slo": true
+      },
+      {
+        "concurrency": 16,
+        "requests": 200,
+        "successes": 200,
+        "failures": 0,
+        "error_rate": 0.0,
+        "requests_per_second": 11.109,
+        "latency_ms": {
+          "p50": 1589.679,
+          "p95": 1880.46,
+          "p99": 1915.701
+        },
+        "cache_hit_rate": 0.005,
+        "batch_size_mean": 4.96,
+        "client_cpu_percent": 87.09,
+        "within_slo": false
+      }
+    ]
+  },
+  "evidence": {
+    "capacity_1w_hash": "benchmark-aws/runs/infer-e81b49f6d3f17765",
+    "capacity_2w_hash": "benchmark-aws/runs/infer-d0b6b9aeb075e99d",
+    "capacity_4w_hash": "benchmark-aws/runs/infer-c3758d5650859167",
+    "capacity_8w_hash_pre": "benchmark-aws/runs/infer-ce2a249418f67507",
+    "capacity_8w_hash": "benchmark-aws/runs/infer-83b8dbd4d084cdc0",
+    "capacity_2w_least": "benchmark-aws/runs/infer-7bcee360549dabf9",
+    "capacity_4w_least": "benchmark-aws/runs/infer-3b483e9f0e17133e",
+    "capacity_8w_least": "benchmark-aws/runs/infer-a709308362635b90",
+    "hold_69": "benchmark-aws/runs/infer-01625ee5bd706ff0",
+    "hold_86_mixed": "benchmark-aws/runs/infer-caddecbab4a71b12",
+    "hold_84": "benchmark-aws/runs/infer-fd3725f22b42726b",
+    "hold_1w_7": "benchmark-aws/runs/infer-c0e784095ecbb4ec",
+    "hold_2w_12": "benchmark-aws/runs/infer-4fb41cf43bfe9fc7",
+    "hold_4w_24": "benchmark-aws/runs/infer-77f5980e5018e459",
+    "hold_8w_45": "benchmark-aws/runs/infer-9b33aaad4138a3ab",
+    "hold_8w_50": "benchmark-aws/runs/infer-faec7003a94741a3",
+    "hold_8w_60": "benchmark-aws/runs/infer-72587b02bbc2e3a1",
+    "failover": "benchmark-aws/runs/infer-27787d94d40229e6",
+    "shufflenet": "benchmark-aws/runs/infer-38fce5baffb45b73",
+    "mobilenet": "benchmark-aws/runs/infer-abece6d2475cf3b2",
+    "resnet18": "benchmark-aws/runs/infer-af28a46c98b37890",
+    "resnet34": "benchmark-aws/runs/infer-d41d6985fa110f4f",
+    "binary_repeated": "benchmark-aws/runs/infer-22d7935dd62ad193",
+    "json_repeated": "benchmark-aws/runs/infer-89263c6af926b86d",
+    "resnet50_accuracy": "benchmark-aws/runs/infer-5fd1ee38b8821e83"
+  }
+}
