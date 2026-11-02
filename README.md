@@ -1,6 +1,6 @@
 > **Project provenance:** This is a fork of [AbhiramDodda/distributed-inference-engine-cpp](https://github.com/AbhiramDodda/distributed-inference-engine-cpp). The upstream repository did not specify a license when this fork was prepared. The original implementation and its measurements are credited to the upstream author.
 >
-> This fork adds a temporary AWS benchmark workflow, local cost and cleanup records, queue and batch timing instrumentation, capacity-aware ONNX Runtime thread selection, `TCP_NODELAY` keep-alive tuning, and a 10 ms batch deadline. See [AWS baseline](docs/aws-baseline.md), [instrumented results](docs/instrumented-aws-run.md), the [thread-tuning A/B](docs/aws-thread-tuning.md), the [HTTP nodelay A/B](docs/aws-http-nodelay.md), the [batch-deadline A/B](docs/aws-batch-deadline.md), and the [run guide](benchmark-aws/README.md). The upstream performance results below describe the original author's experiments; they are not results from our AWS runs.
+> This fork adds a temporary AWS benchmark workflow, local cost and cleanup records, queue and batch timing instrumentation, capacity-aware ONNX Runtime thread selection, `TCP_NODELAY` keep-alive tuning, a 10 ms batch deadline, and gateway response passthrough. See [AWS baseline](docs/aws-baseline.md), [instrumented results](docs/instrumented-aws-run.md), the [thread-tuning A/B](docs/aws-thread-tuning.md), the [HTTP nodelay A/B](docs/aws-http-nodelay.md), the [batch-deadline A/B](docs/aws-batch-deadline.md), the [gateway passthrough A/B](docs/aws-gateway-passthrough.md), and the [run guide](benchmark-aws/README.md). The upstream performance results below describe the original author's experiments; they are not results from our AWS runs.
 
 # Distributed Inference Engine
 
@@ -315,6 +315,12 @@ python3 tail_latency_sweep.py --concurrency 16 32 64 96 128 --requests-per-level
   the measured batch sizes and cache-hit workload stayed unchanged. This is a
   latency/throughput tuning choice, not a universal optimum. See the
   [batch-deadline report](docs/aws-batch-deadline.md).
+- **Gateway response passthrough**: the gateway now forwards a successful
+  worker response body unchanged instead of parsing and re-dumping it. On the
+  2-vCPU benchmark host, cache-hit p50 fell 24–30% and closed-loop cache-hit
+  throughput rose 12–41%; unique-input and backend behavior were unchanged.
+  This is a single-host synthetic-input result. See the
+  [gateway passthrough report](docs/aws-gateway-passthrough.md).
 - **Capacity-aware ORT threads**: the worker no longer hardcodes four ONNX Runtime
   intra-op threads. It now uses `min(4, hardware_concurrency)` with a floor of one,
   so the two-vCPU benchmark host runs two threads instead of four, and logs the

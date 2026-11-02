@@ -119,7 +119,7 @@ public:
         }
     }
     
-    json routeRequest(const json& request) {
+    std::string routeRequest(const json& request) {
         // Route by a hash of the input data (not request_id) so that identical
         // inputs always map to the same worker, maximizing cache hits and
         // avoiding redundant copies of the same result across workers.
@@ -187,7 +187,7 @@ private:
         return std::to_string(h);
     }
 
-    std::optional<json> tryNode(const std::string& node, const json& request) {
+    std::optional<std::string> tryNode(const std::string& node, const json& request) {
         auto breaker_it = circuit_breakers_.find(node);
         if (breaker_it == circuit_breakers_.end()) {
             return std::nullopt;
@@ -215,7 +215,10 @@ private:
             if (result && result->status == 200) {
                 std::cout << "Success from " << node << std::endl;
                 breaker->recordSuccess();
-                return json::parse(result->body);
+                // Forward the worker body unchanged. The gateway does not
+                // transform successful responses, so parsing and re-dumping
+                // them only adds CPU on the shared inference host.
+                return result->body;
             } else {
                 if (result) {
                     std::cerr << "Request to " << node << " failed with status: " 
@@ -314,7 +317,7 @@ int main(int argc, char** argv) {
             auto request = json::parse(req.body);
             auto response = gateway.routeRequest(request);
             
-            res.set_content(response.dump(), "application/json");
+            res.set_content(response, "application/json");
         } catch (const std::exception& e) {
             json error;
             error["error"] = e.what();

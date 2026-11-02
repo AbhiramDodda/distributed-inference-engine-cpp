@@ -43,6 +43,16 @@ class GatewayLatencyIntegrationTests(unittest.TestCase):
             return sock.getsockname()[1]
 
     @staticmethod
+    def infer(port, request_id, values):
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/infer",
+            data=json.dumps({"request_id": request_id, "input_data": values}).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return json.load(response)
+
+    @staticmethod
     def wait_url(url, timeout=60):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -114,6 +124,16 @@ class GatewayLatencyIntegrationTests(unittest.TestCase):
                 self.assertLessEqual(
                     p95, p95_limit, f"cache-hit p95 {p95:.1f} ms exceeds {p95_limit:.1f} ms"
                 )
+
+                forwarded_input = [7.0, 8.0, 9.0]
+                warm = self.infer(gateway_port, "warm", forwarded_input)
+                direct = self.infer(worker_port, "direct", forwarded_input)
+                forwarded = self.infer(gateway_port, "forwarded", forwarded_input)
+                self.assertTrue(direct["cached"])
+                self.assertTrue(forwarded["cached"])
+                self.assertEqual(warm["output_data"], direct["output_data"])
+                self.assertEqual(direct["output_data"], forwarded["output_data"])
+                self.assertEqual(direct["node_id"], forwarded["node_id"])
             finally:
                 for process in (gateway, worker):
                     if process is not None:

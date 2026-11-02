@@ -36,10 +36,11 @@ This is the resumable record for [CONTINUOUS-OPTIMIZATION.md](CONTINUOUS-OPTIMIZ
 | — | HTTP keep-alive / Nagle delayed-ACK | Cache-hit p50 ~83 ms through the unmodified gateway vs 0.4–0.7 ms direct; enabling `TCP_NODELAY` reduced AWS cache-hit p50 to 1.16–3.54 ms. | **Accepted in cycle 2** |
 | — | Input copy/padding performance | Flatten/pad measured 8/18/39/989 µs for batch 1/2/4/32, negligible against 86–345 ms backend time. The same investigation found and fixed an oversized-input batch-alignment defect. | **Rejected for performance; correctness fixed in cycle 3** |
 | — | Batching policy / deadline | 20 ms → 10 ms lowered unique p50 2–9% and queue wait ~50% at c1–c4; 5 ms lost batch size at c32. | **Accepted in cycle 4** |
-| 1 | Gateway logging / JSON | Per-request `std::endl` logging and JSON parse/dump; nodelay removed most cache-hit latency without touching logging. | Next bounded investigation |
-| 3 | Cache/routing | Repeated workload is ~100% hits; direct lookups are sub-millisecond. No demonstrated bottleneck. | No action |
-| 4 | Measurement quality | Closed-loop client, shared CPU, 60 samples/level, p99 unstable, baseline sessions differ. | Improve with paired runs; do not infer p99 |
-| 5 | Multi-host scaling | Not authorized and not measurable on one host. | Out of scope; document only |
+| — | Gateway per-request logging | Local A/B: logging 141/868/896 vs no-log 147/880/918 req/s; differences were within noise (≤2.5%). | **Rejected as low value** |
+| — | Gateway JSON parse/dump | Local A/B: cache-hit p50 1.57/2.09/4.18 → 1.11/1.50/2.70 ms; AWS cache-hit throughput 327.7/884.7/953.1 → 367.9/1,246.8/1,264.4 req/s. | **Accepted in cycle 5** |
+| 1 | Cache/routing | Repeated workload is ~100% hits; direct lookups are sub-millisecond. No demonstrated bottleneck. | No action |
+| 2 | Measurement quality | Closed-loop client, shared CPU, 60 samples/level, p99 unstable, baseline sessions differ. | Improve with paired runs; do not infer p99 |
+| 3 | Multi-host scaling | Not authorized and not measurable on one host. | Out of scope; document only |
 
 ## Cycle 2 — HTTP keep-alive / Nagle (accepted)
 
@@ -92,6 +93,28 @@ This is the resumable record for [CONTINUOUS-OPTIMIZATION.md](CONTINUOUS-OPTIMIZ
 | Artifacts | `benchmarks/results/2026-11-02-aws-batch-deadline.json`, `docs/aws-batch-deadline.md`, raw runs `infer-f6dfdf8dd788978c`, `infer-d1070c813d774208`; local sweeps under `benchmark-aws/runs/local-cycle4-*`. |
 | Cost | Two new runs: $0.003197 + $0.003222 = $0.006419. Eleven-run project estimate $0.037929. Cleanup verified. |
 | Limits | Single host, synthetic padded inputs, closed-loop client sharing CPU; baseline/changed sessions differ; high-concurrency evidence is local only. |
+
+## Cycle 5 — gateway response passthrough (accepted)
+
+| Field | Record |
+| --- | --- |
+| Hypothesis | The gateway parses each successful ~10 KB worker response into JSON and immediately dumps it, although it does not transform the response. Removing that round trip should reduce gateway CPU and improve cache-hit throughput on the shared two-vCPU host. |
+| Baseline | Accepted cycle-4 source with JSON parse/dump; AWS runs `infer-f6dfdf8dd788978c`, `infer-d1070c813d774208`. |
+| Local A/B | Cache-hit p50 1.57/2.09/4.18 → 1.11/1.50/2.70 ms; throughput 141/868/896 → 147/1,211/1,229 req/s. Unique p50 and backend unchanged. 240/240 requests succeeded. |
+| Change | `tryNode`/`routeRequest` return the raw successful body; the handler sets it directly. Non-200/error/retry behavior is unchanged. |
+| Tradeoff | The gateway no longer validates the worker's 200 JSON body. The worker is trusted; the benchmark client still checks response shape and request association. |
+| AWS A/B | Cache-hit p50 1.15/2.17/3.69 → 0.85/1.51/2.80 ms; throughput 327.7/884.7/953.1 → 367.9/1,246.8/1,264.4 req/s. Unique p50 −0.2 to −0.7%; throughput +0.1 to +0.8%. No failures. |
+| Correctness | Gateway test compares direct worker output with forwarded output; default suite 33 passed / 3 intended skips; all six opt-in tests pass; `ctest` batch tests pass. |
+| Decision | Accepted as a focused gateway CPU optimization. The cache-miss path is unchanged; the gain is confined to the response path. |
+| Artifacts | `benchmarks/results/2026-11-02-aws-gateway-passthrough.json`, `docs/aws-gateway-passthrough.md`, raw runs `infer-a5f5bc6de001b9ae`, `infer-f8f48cbffd6ffd98`; local A/B under `benchmark-aws/runs/local-cycle5-final-2026-11-02/`. |
+| Cost | Two new runs: $0.003222 + $0.003552 = $0.006774. Thirteen-run project estimate $0.044703. Cleanup verified. |
+| Limits | Single host, synthetic padded inputs, closed-loop client sharing CPU; high cache-hit throughput is client-bound; baseline and changed sessions differ. |
+
+## Stop condition and future work
+
+The current single-host, synthetic, closed-loop scope has no remaining candidate with a demonstrated material gain. Gateway per-request logging was measured and rejected (≤2.5% difference); cache/routing has no demonstrated bottleneck; measurement quality is a reporting constraint rather than a code change; multi-host scaling is outside the current authorization and budget.
+
+Future work that would justify another cycle: an approved multi-host experiment with network/security/cost design; an open-loop client to separate server capacity from the closed-loop client; a mixed hit/miss workload to test cache and routing under realistic repetition; or an opt-in gateway response-validation mode if the passthrough trust tradeoff is not acceptable for a deployment. Each requires a new baseline, a one-variable change, and its own correctness and cost plan.
 
 ## Checkpoint rules
 
