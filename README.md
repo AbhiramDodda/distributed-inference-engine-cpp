@@ -1,3 +1,7 @@
+> **Project provenance:** This is a fork of [AbhiramDodda/distributed-inference-engine-cpp](https://github.com/AbhiramDodda/distributed-inference-engine-cpp). The upstream repository did not specify a license when this fork was prepared. The original implementation and its measurements are credited to the upstream author.
+>
+> This fork adds a temporary AWS benchmark workflow, local cost and cleanup records, and queue and batch timing instrumentation. See [AWS baseline](docs/aws-baseline.md), [instrumented results](docs/instrumented-aws-run.md), and the [run guide](benchmark-aws/README.md). The upstream performance results below describe the original author's experiments; they are not results from our AWS runs.
+
 # Distributed Inference Engine
 
 A high-performance distributed inference system for ONNX models featuring consistent hashing, LRU caching, dynamic batching, and circuit breakers.

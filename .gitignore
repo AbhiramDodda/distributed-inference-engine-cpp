@@ -36,3 +36,9 @@ __pycache__/
 *.egg-info/
 dist/
 *.eggbuild_tf/
+
+# Temporary cloud benchmark results and ephemeral credentials
+benchmark-aws/runs/
+
+# Local lint cache
+.ruff_cache/

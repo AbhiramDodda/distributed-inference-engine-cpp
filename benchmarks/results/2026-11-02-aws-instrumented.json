@@ -1,0 +1,180 @@
+{
+  "date": "2026-11-02",
+  "description": "Single-host CPU inference experiment; client, gateway and one worker share an EC2 instance. Synthetic inputs.",
+  "region": "us-east-1",
+  "instance_type": "c6i.large",
+  "base_revision": "c4d8a08b72df810ffad0dce6a993cecae22494bb",
+  "source_mode": "instrumented",
+  "instrumentation_patch_sha256": "7a396ba1c611a0235a7e872c5f79928384f0b7e2a21e7e0aa64b60138fdfda88",
+  "model_sha256": "79102261eb6e5fd7af5d27f41316293e388c5cb691e5d25bfb035c4f64fefe31",
+  "results": [
+    {
+      "workload": "repeated",
+      "concurrency": 1,
+      "requests": 60,
+      "successes": 60,
+      "failures": 0,
+      "wall_seconds": 4.457,
+      "successful_requests_per_second": 13.46132662426557,
+      "successful_latency_ms": {
+        "p50": 98.395,
+        "p95": 109.926,
+        "p99": 247.043
+      },
+      "cache_hits": 59,
+      "missing_worker_timings": 0,
+      "worker_timings_us": {
+        "queue_wait_us": {
+          "samples": 1,
+          "p50": 20058,
+          "p95": 20058
+        },
+        "batch_execution_us": {
+          "samples": 1,
+          "p50": 222937,
+          "p95": 222937
+        }
+      }
+    },
+    {
+      "workload": "repeated",
+      "concurrency": 2,
+      "requests": 60,
+      "successes": 60,
+      "failures": 0,
+      "wall_seconds": 2.18,
+      "successful_requests_per_second": 27.527700496460334,
+      "successful_latency_ms": {
+        "p50": 97.458,
+        "p95": 109.92,
+        "p99": 110.75
+      },
+      "cache_hits": 60,
+      "missing_worker_timings": 0,
+      "worker_timings_us": {
+        "queue_wait_us": {
+          "samples": 0,
+          "p50": null,
+          "p95": null
+        },
+        "batch_execution_us": {
+          "samples": 0,
+          "p50": null,
+          "p95": null
+        }
+      }
+    },
+    {
+      "workload": "repeated",
+      "concurrency": 4,
+      "requests": 60,
+      "successes": 60,
+      "failures": 0,
+      "wall_seconds": 1.081,
+      "successful_requests_per_second": 55.49141754753541,
+      "successful_latency_ms": {
+        "p50": 96.658,
+        "p95": 108.909,
+        "p99": 119.045
+      },
+      "cache_hits": 60,
+      "missing_worker_timings": 0,
+      "worker_timings_us": {
+        "queue_wait_us": {
+          "samples": 0,
+          "p50": null,
+          "p95": null
+        },
+        "batch_execution_us": {
+          "samples": 0,
+          "p50": null,
+          "p95": null
+        }
+      }
+    },
+    {
+      "workload": "unique",
+      "concurrency": 1,
+      "requests": 60,
+      "successes": 60,
+      "failures": 0,
+      "wall_seconds": 14.706,
+      "successful_requests_per_second": 4.0799830526316745,
+      "successful_latency_ms": {
+        "p50": 249.848,
+        "p95": 286.5,
+        "p99": 306.526
+      },
+      "cache_hits": 0,
+      "missing_worker_timings": 0,
+      "worker_timings_us": {
+        "queue_wait_us": {
+          "samples": 60,
+          "p50": 20059,
+          "p95": 20060
+        },
+        "batch_execution_us": {
+          "samples": 60,
+          "p50": 196047,
+          "p95": 232768
+        }
+      }
+    },
+    {
+      "workload": "unique",
+      "concurrency": 2,
+      "requests": 60,
+      "successes": 60,
+      "failures": 0,
+      "wall_seconds": 12.727,
+      "successful_requests_per_second": 4.714322724749735,
+      "successful_latency_ms": {
+        "p50": 419.754,
+        "p95": 479.466,
+        "p99": 488.755
+      },
+      "cache_hits": 0,
+      "missing_worker_timings": 0,
+      "worker_timings_us": {
+        "queue_wait_us": {
+          "samples": 60,
+          "p50": 20057,
+          "p95": 20060
+        },
+        "batch_execution_us": {
+          "samples": 60,
+          "p50": 371591,
+          "p95": 432471
+        }
+      }
+    },
+    {
+      "workload": "unique",
+      "concurrency": 4,
+      "requests": 60,
+      "successes": 60,
+      "failures": 0,
+      "wall_seconds": 10.869,
+      "successful_requests_per_second": 5.520516239394707,
+      "successful_latency_ms": {
+        "p50": 722.196,
+        "p95": 804.36,
+        "p99": 810.99
+      },
+      "cache_hits": 0,
+      "missing_worker_timings": 0,
+      "worker_timings_us": {
+        "queue_wait_us": {
+          "samples": 60,
+          "p50": 18179,
+          "p95": 20061
+        },
+        "batch_execution_us": {
+          "samples": 60,
+          "p50": 659765,
+          "p95": 743764
+        }
+      }
+    }
+  ]
+}

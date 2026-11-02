@@ -1,0 +1,102 @@
+{
+  "date": "2026-11-02",
+  "description": "Single-host CPU inference experiment; client, gateway and one worker share an EC2 instance. Synthetic inputs.",
+  "region": "us-east-1",
+  "instance_type": "c6i.large",
+  "base_revision": "c4d8a08b72df810ffad0dce6a993cecae22494bb",
+  "source_mode": "baseline",
+  "instrumentation_patch_sha256": null,
+  "model_sha256": "79102261eb6e5fd7af5d27f41316293e388c5cb691e5d25bfb035c4f64fefe31",
+  "results": [
+    {
+      "workload": "repeated",
+      "concurrency": 1,
+      "requests": 60,
+      "successes": 60,
+      "failures": 0,
+      "wall_seconds": 4.488,
+      "successful_requests_per_second": 13.369528113099756,
+      "successful_latency_ms": {
+        "p50": 98.357,
+        "p95": 109.93,
+        "p99": 240.274
+      },
+      "cache_hits": 59
+    },
+    {
+      "workload": "repeated",
+      "concurrency": 2,
+      "requests": 60,
+      "successes": 60,
+      "failures": 0,
+      "wall_seconds": 2.122,
+      "successful_requests_per_second": 28.27788662978435,
+      "successful_latency_ms": {
+        "p50": 98.458,
+        "p95": 109.921,
+        "p99": 118.926
+      },
+      "cache_hits": 60
+    },
+    {
+      "workload": "repeated",
+      "concurrency": 4,
+      "requests": 60,
+      "successes": 60,
+      "failures": 0,
+      "wall_seconds": 1.098,
+      "successful_requests_per_second": 54.66552369074211,
+      "successful_latency_ms": {
+        "p50": 98.538,
+        "p95": 109.929,
+        "p99": 119.424
+      },
+      "cache_hits": 60
+    },
+    {
+      "workload": "unique",
+      "concurrency": 1,
+      "requests": 60,
+      "successes": 60,
+      "failures": 0,
+      "wall_seconds": 15.323,
+      "successful_requests_per_second": 3.9157610468170723,
+      "successful_latency_ms": {
+        "p50": 250.533,
+        "p95": 309.9,
+        "p99": 369.959
+      },
+      "cache_hits": 0
+    },
+    {
+      "workload": "unique",
+      "concurrency": 2,
+      "requests": 60,
+      "successes": 60,
+      "failures": 0,
+      "wall_seconds": 12.522,
+      "successful_requests_per_second": 4.791403893300082,
+      "successful_latency_ms": {
+        "p50": 409.488,
+        "p95": 501.093,
+        "p99": 524.224
+      },
+      "cache_hits": 0
+    },
+    {
+      "workload": "unique",
+      "concurrency": 4,
+      "requests": 60,
+      "successes": 60,
+      "failures": 0,
+      "wall_seconds": 10.994,
+      "successful_requests_per_second": 5.45753245036833,
+      "successful_latency_ms": {
+        "p50": 711.087,
+        "p95": 912.379,
+        "p99": 1114.383
+      },
+      "cache_hits": 0
+    }
+  ]
+}
