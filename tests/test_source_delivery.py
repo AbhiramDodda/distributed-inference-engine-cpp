@@ -46,13 +46,18 @@ class SourceDeliveryTests(unittest.TestCase):
                     check=True,
                     capture_output=True,
                 )
-                self.assertEqual(set(manifest["source_sha256"]), set(controller.SOURCE_FILES))
+                expected_sources = (
+                    controller.BASELINE_SOURCE_FILES
+                    if mode == "baseline"
+                    else controller.SOURCE_FILES
+                )
+                self.assertEqual(set(manifest["source_sha256"]), set(expected_sources))
                 self.assertEqual((payload / "source.patch").stat().st_size == 0, mode == "baseline")
 
                 checkout = root / (mode + "-checkout")
                 checkout.mkdir()
                 subprocess.run(["git", "init", "--quiet", str(checkout)], check=True)
-                for path in controller.SOURCE_FILES:
+                for path in controller.BASELINE_SOURCE_FILES:
                     target = checkout / path
                     target.parent.mkdir(parents=True, exist_ok=True)
                     original = subprocess.run(
@@ -126,7 +131,11 @@ class SourceDeliveryTests(unittest.TestCase):
                 controller.prepare_source(Path(temp), "instrumented")
 
     def test_delivery_includes_each_changed_source_file(self):
-        for name in ("src/inference_engine.cpp", "src/gateway.cpp"):
+        for name in (
+            "src/inference_engine.cpp",
+            "src/gateway.cpp",
+            "include/tensor_payload.h",
+        ):
             self.assertIn(name, controller.SOURCE_FILES)
             self.assertIn(name, verifier.SOURCE_FILES)
 
@@ -139,6 +148,8 @@ class SourceDeliveryTests(unittest.TestCase):
             self.assertIn("hardware_concurrency", patch)
             self.assertGreaterEqual(patch.count("set_tcp_nodelay(true)"), 3)
             self.assertIn("GATEWAY_PORT", patch)
+            self.assertIn("decode_float32_le", patch)
+            self.assertIn("infer_tensor", patch)
 
     def test_other_source_changes_are_not_silently_omitted(self):
         def fake_git(args, **_kwargs):

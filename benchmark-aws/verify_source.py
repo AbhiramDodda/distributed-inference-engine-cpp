@@ -10,12 +10,13 @@ import re
 from pathlib import Path
 
 BASE_REVISION = "c4d8a08b72df810ffad0dce6a993cecae22494bb"
-SOURCE_FILES = {
+BASELINE_SOURCE_FILES = {
     "include/batch_processor.h",
     "src/worker_node.cpp",
     "src/inference_engine.cpp",
     "src/gateway.cpp",
 }
+SOURCE_FILES = BASELINE_SOURCE_FILES | {"include/tensor_payload.h"}
 SCRIPT_FILES = {"remote.sh", "load.py", "verify_source.py"}
 
 
@@ -42,7 +43,8 @@ def read_manifest(path: Path) -> dict:
         raise ValueError("invalid source mode")
     sources = manifest.get("source_sha256")
     scripts = manifest.get("script_sha256")
-    if not isinstance(sources, dict) or set(sources) != SOURCE_FILES:
+    expected = BASELINE_SOURCE_FILES if manifest["mode"] == "baseline" else SOURCE_FILES
+    if not isinstance(sources, dict) or set(sources) != expected:
         raise ValueError("source manifest must contain exactly the allowed source files")
     if not isinstance(scripts, dict) or set(scripts) != SCRIPT_FILES:
         raise ValueError("source manifest must contain exactly the benchmark scripts")

@@ -1,0 +1,48 @@
+{
+  "slo": {
+    "availability": 0.999,
+    "p95_ms": 500,
+    "p99_ms": 1000,
+    "error_rate": 0.001,
+    "cpu_percent": 80,
+    "hold_seconds": 300
+  },
+  "hardware": {
+    "worker_type": "c6i.large",
+    "gateway_type": "c6i.large",
+    "load_type": "c6i.xlarge",
+    "max_workers": 8
+  },
+  "models": [
+    "shufflenetv2-10",
+    "mobilenetv2-7",
+    "resnet18-v2-7",
+    "resnet34-v2-7",
+    "resnet50-v2-7"
+  ],
+  "stage1": {
+    "architectures": ["baseline"],
+    "settings": {"threads": 2, "deadline_ms": 10, "max_batch": 32, "cache": 1000},
+    "workload": "unique",
+    "requests": 500,
+    "levels": [1, 4, 16]
+  },
+  "stage2": {
+    "architectures": ["baseline", "binary", "process_pool", "direct"],
+    "settings": {"threads": 2, "deadline_ms": 10, "max_batch": 32, "cache": 1000},
+    "workload": "mixed",
+    "requests": 1000,
+    "levels": [4, 16, 64]
+  },
+  "stage3": {
+    "threads": [1, 2, 4],
+    "deadline_ms": [5, 10, 20],
+    "max_batch": [16, 32, 64],
+    "cache": [1, 100, 1000]
+  },
+  "stage4": {
+    "workers": [1, 2, 4, 8],
+    "levels": [1, 2, 4, 8, 16, 32, 64, 128, 256],
+    "open_loop_rates": [5, 10, 20, 40]
+  }
+}

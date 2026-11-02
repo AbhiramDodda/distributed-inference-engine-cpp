@@ -32,7 +32,9 @@ SOURCE_FILES = (
     "src/worker_node.cpp",
     "src/inference_engine.cpp",
     "src/gateway.cpp",
+    "include/tensor_payload.h",
 )
+BASELINE_SOURCE_FILES = SOURCE_FILES[:-1]
 
 
 class Tee:
@@ -124,12 +126,17 @@ def prepare_source(directory: Path, mode: str) -> dict:
         if path.is_symlink() or not path.is_file():
             raise RuntimeError(f"source file is missing or is a symlink: {name}")
         if mode == "baseline":
-            content = subprocess.run(
-                ["git", "-C", str(root), "show", f"{BASE_REVISION}:{name}"],
-                check=True,
-                capture_output=True,
-                timeout=20,
-            ).stdout
+            try:
+                content = subprocess.run(
+                    ["git", "-C", str(root), "show", f"{BASE_REVISION}:{name}"],
+                    check=True,
+                    capture_output=True,
+                    timeout=20,
+                ).stdout
+            except subprocess.CalledProcessError:
+                # A new file in the allowlist has no baseline version. The
+                # baseline source does not reference it, so it is omitted.
+                continue
         else:
             content = path.read_bytes()
         if len(content) > 2_000_000:
@@ -183,6 +190,8 @@ def prepare_source(directory: Path, mode: str) -> dict:
             raise RuntimeError("gateway TCP_NODELAY settings are missing")
         if "GATEWAY_PORT" not in gateway_source:
             raise RuntimeError("gateway test port override is missing")
+        if "decode_float32_le" not in patch or "infer_tensor" not in patch:
+            raise RuntimeError("binary tensor transport is missing")
 
     patch_bytes = patch.encode("utf-8")
     (directory / "source.patch").write_bytes(patch_bytes)
