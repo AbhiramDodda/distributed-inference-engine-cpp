@@ -16,9 +16,13 @@ class BatchProcessor {
 public:
     using BatchCallback = std::function<std::vector<Response>(const std::vector<Request>&)>;
 
-    // `latency_budget` is the maximum time any request may sit in the queue
-    // before its batch is flushed. See processingLoop() for the SLO-aware
-    // batching policy.
+    struct Result {
+        Response response;
+        int64_t queue_wait_us;
+    };
+
+    // `latency_budget` is the target batching deadline for the oldest request.
+    // A busy worker can delay processing beyond that deadline.
     BatchProcessor(
         size_t max_batch_size,
         std::chrono::milliseconds latency_budget,
@@ -26,7 +30,7 @@ public:
     );
 
     ~BatchProcessor();
-    Response process(const Request& request);
+    Result process(const Request& request);
 
     void start();
     void stop();
@@ -46,7 +50,7 @@ private:
     // queueing latency against a fixed budget.
     struct QueuedRequest {
         Request request;
-        std::promise<Response> promise;
+        std::promise<Result> promise;
         std::chrono::steady_clock::time_point arrival;
     };
 
@@ -101,9 +105,10 @@ void BatchProcessor<Request, Response>::stop() {
 }
 
 template<typename Request, typename Response>
-Response BatchProcessor<Request, Response>::process(const Request& request) {
-    std::promise<Response> promise;
-    std::future<Response> future = promise.get_future();
+typename BatchProcessor<Request, Response>::Result
+BatchProcessor<Request, Response>::process(const Request& request) {
+    std::promise<Result> promise;
+    std::future<Result> future = promise.get_future();
 
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
@@ -132,11 +137,9 @@ void BatchProcessor<Request, Response>::processingLoop() {
         if (!running_) break;
 
         // Anchor the flush deadline to the OLDEST waiting request's arrival
-        // time, not to when this loop happened to start waiting. This is the
-        // SLO-aware part: no request's queueing latency can exceed the budget,
-        // even if the worker was busy running the previous batch when it
-        // arrived (in which case the deadline is already in the past and we
-        // flush immediately, draining the backlog).
+        // time, not to when this loop happened to start waiting. If the worker
+        // was busy running the previous batch, the deadline may
+        // already have passed. The budget is not a bound on actual queue wait.
         auto deadline = request_queue_.front().arrival + latency_budget_;
 
         // Grow the batch until it fills or the deadline passes. Under high load
@@ -171,15 +174,21 @@ void BatchProcessor<Request, Response>::processBatch(
     if (batch.empty()) return;
 
     try {
+        // Queue wait ends when this batch begins processing, before the callback.
+        const auto batch_start = std::chrono::steady_clock::now();
+        std::vector<int64_t> queue_waits;
+        queue_waits.reserve(batch.size());
         std::vector<Request> requests;
         requests.reserve(batch.size());
         for (auto& item : batch) {
+            queue_waits.push_back(std::chrono::duration_cast<std::chrono::microseconds>(
+                batch_start - item.arrival).count());
             requests.push_back(item.request);
         }
         auto responses = callback_(requests);
         for (size_t i = 0; i < batch.size(); ++i) {
             if (i < responses.size()) {
-                batch[i].promise.set_value(responses[i]);
+                batch[i].promise.set_value(Result{std::move(responses[i]), queue_waits[i]});
             } else {
                 // If callback returned fewer results, fail the remaining ones
                 // rather than letting them hang indefinitely

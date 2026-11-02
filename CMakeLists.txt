@@ -95,3 +95,12 @@ else()
     target_compile_options(worker_node PRIVATE -Wall -Wextra)
     target_compile_options(gateway PRIVATE -Wall -Wextra)
 endif()
+
+# Unit tests for queue timing do not require a running inference service.
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(test_batch_timings tests/test_batch_timings.cpp)
+    target_link_libraries(test_batch_timings Threads::Threads)
+    add_test(NAME batch_timings COMMAND test_batch_timings)
+    set_tests_properties(batch_timings PROPERTIES TIMEOUT 10)
+endif()

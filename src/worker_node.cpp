@@ -26,6 +26,8 @@ struct InferenceResponse {
     std::string request_id;
     std::vector<float> output_data;
     int64_t inference_time_us;
+    int64_t batch_execution_us;
+    size_t batch_size;
     bool cached;
 };
 
@@ -76,6 +78,9 @@ public:
             response["output_data"] = *cached;
             response["node_id"] = node_id_;
             response["cached"] = true;
+            response["queue_wait_us"] = nullptr;
+            response["batch_execution_us"] = nullptr;
+            response["batch_size"] = nullptr;
             response["inference_time_us"] = std::chrono::duration_cast<
                 std::chrono::microseconds>(cache_end - cache_start).count();
 
@@ -84,7 +89,8 @@ public:
         
         // Cache miss - use batch processor
         InferenceRequest inf_req{request_id, input_data};
-        InferenceResponse inf_resp = batch_processor_.process(inf_req);
+        auto timed = batch_processor_.process(inf_req);
+        const InferenceResponse& inf_resp = timed.response;
         cache_.put(input_data, inf_resp.output_data);
         
         json response;
@@ -93,6 +99,9 @@ public:
         response["node_id"] = node_id_;
         response["cached"] = false;
         response["inference_time_us"] = inf_resp.inference_time_us;
+        response["queue_wait_us"] = timed.queue_wait_us;
+        response["batch_execution_us"] = inf_resp.batch_execution_us;
+        response["batch_size"] = inf_resp.batch_size;
         
         return response;
     }
@@ -121,7 +130,7 @@ public:
 private:
     std::vector<InferenceResponse> processBatch(
         const std::vector<InferenceRequest>& requests) {
-        auto start = std::chrono::high_resolution_clock::now();
+        const auto legacy_start = std::chrono::high_resolution_clock::now();
         std::vector<std::vector<float>> inputs;
         inputs.reserve(requests.size());
         for (const auto& req : requests) {
@@ -129,11 +138,15 @@ private:
         }
         
         // batch inference
+        const auto batch_start = std::chrono::steady_clock::now();
         auto outputs = engine_->batchPredict(inputs);
+        const auto batch_end = std::chrono::steady_clock::now();
         
-        auto end = std::chrono::high_resolution_clock::now();
+        const auto legacy_end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
-            end - start).count();
+            legacy_end - legacy_start).count();
+        const auto batch_execution_us = std::chrono::duration_cast<std::chrono::microseconds>(
+            batch_end - batch_start).count();
         std::vector<InferenceResponse> responses;
         responses.reserve(requests.size());
         int64_t per_request_time = duration / requests.size();
@@ -142,6 +155,8 @@ private:
             resp.request_id = requests[i].request_id;
             resp.output_data = outputs[i];
             resp.inference_time_us = per_request_time;
+            resp.batch_execution_us = batch_execution_us;
+            resp.batch_size = requests.size();
             resp.cached = false;
             responses.push_back(resp);
         }
