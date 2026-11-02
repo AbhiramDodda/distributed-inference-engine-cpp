@@ -35,25 +35,38 @@ fi
 echo ""
 
 mkdir -p external
-cd external
 
-echo "Downloading cpp-httplib..."
-if [ ! -d "cpp-httplib" ]; then
-    git clone --depth 1 --branch v0.14.3 https://github.com/yhirose/cpp-httplib.git
-    echo "cpp-httplib downloaded"
-else
-    echo "cpp-httplib exists"
-fi
+install_dependency() {
+    local directory=$1 url=$2 tag=$3 expected=$4 marker=$5
+    if [ -f "$directory/$marker" ]; then
+        local repo_root actual
+        repo_root=$(git -C "$directory" rev-parse --show-toplevel 2>/dev/null || true)
+        actual=$(git -C "$directory" rev-parse HEAD 2>/dev/null || true)
+        if [ "$repo_root" != "$(cd "$directory" && pwd -P)" ] || [ "$actual" != "$expected" ]; then
+            echo "Existing dependency at $directory is not the expected checkout; inspect it manually." >&2
+            return 1
+        fi
+        echo "$directory already has the expected revision"
+        return
+    fi
+    if [ -d "$directory" ]; then
+        if [ -n "$(find "$directory" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+            echo "$directory is not empty and lacks $marker; inspect it manually." >&2
+            return 1
+        fi
+        rmdir "$directory"
+    fi
+    git clone --depth 1 --branch "$tag" "$url" "$directory"
+    if [ "$(git -C "$directory" rev-parse HEAD)" != "$expected" ]; then
+        echo "Unexpected dependency revision at $directory" >&2
+        return 1
+    fi
+}
 
-echo "Downloading nlohmann-json..."
-if [ ! -d "json" ]; then
-    git clone --depth 1 --branch v3.11.3 https://github.com/nlohmann/json.git
-    echo "nlohmann-json downloaded"
-else
-    echo "nlohmann-json exists"
-fi
-
-cd ..
+install_dependency external/cpp-httplib https://github.com/yhirose/cpp-httplib.git \
+    v0.14.3 cbca63f091ef1147ff57e90eb1ee5e558aa05d2c httplib.h
+install_dependency external/json https://github.com/nlohmann/json.git \
+    v3.11.3 9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03 include/nlohmann/json.hpp
 
 echo "System Information:"
 echo "  OS: $OS"
