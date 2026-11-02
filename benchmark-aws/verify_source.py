@@ -14,6 +14,7 @@ SOURCE_FILES = {
     "include/batch_processor.h",
     "src/worker_node.cpp",
     "src/inference_engine.cpp",
+    "src/gateway.cpp",
 }
 SCRIPT_FILES = {"remote.sh", "load.py", "verify_source.py"}
 

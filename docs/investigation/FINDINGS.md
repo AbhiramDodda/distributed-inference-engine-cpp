@@ -1,6 +1,6 @@
 # Investigation record
 
-Status: **complete for the first investigation cycle.** The continuous cycle ledger is [EXPERIMENTS.md](EXPERIMENTS.md); cycle 2 is in progress. Independent review remains outstanding; the first-cycle verification was a self-review.
+Status: **complete for cycles 1 and 2.** The continuous cycle ledger is [EXPERIMENTS.md](EXPERIMENTS.md); cycle 3 is pending. Independent review remains outstanding; verification is a labeled self-review.
 
 ## Context and scope
 
@@ -55,7 +55,7 @@ Source and artifact identities: model `models/resnet50-v2-7.onnx`, SHA-256 `7910
 
 - No crash, wrong-response, or request/response pairing failure was reproduced. The final default suite had 33 passes and 2 opt-in skips; all four opt-in real-worker tests passed when a built worker and model were supplied.
 - The selected change alters only the ORT intra-op thread count. It can change floating-point reduction order; output parity must be checked with fixed inputs and a stated tolerance.
-- The HTTP delayed-ACK finding is a latency issue, not a correctness issue. It is recorded as a lower-priority follow-up because one focused change is required.
+- The HTTP delayed-ACK finding is a latency issue, not a correctness issue. It was implemented and accepted as cycle 2; see [EXPERIMENTS.md](EXPERIMENTS.md) and [the HTTP nodelay report](../aws-http-nodelay.md).
 - No security issue was reproduced. Probes bound to loopback and 18xxx ports; no service was exposed. No credentials or account identifiers were printed.
 - AWS cleanup from the prior runs was verified previously; no new AWS resources existed at the start of this session.
 
@@ -63,7 +63,7 @@ Source and artifact identities: model `models/resnet50-v2-7.onnx`, SHA-256 `7910
 
 - **Recommended change:** replace the hardcoded `SetIntraOpNumThreads(4)` with a capacity-aware default: use `min(4, hardware_concurrency)` with a floor of 1, and allow an explicit `ORT_INTRA_THREADS` override for testing/operations. Log the effective count. On the benchmark `c6i.large` (2 vCPU), the default becomes 2 threads instead of 4.
 - **Why:** the instrumented AWS run shows the backend call dominates unique-request latency; the local 2-CPU experiment shows 4 threads is ~2× slower than 2 threads, consistent with oversubscription. This is a one-line behavioral change with a clear rollback and no protocol or API change.
-- **Simpler alternative / no-change:** keep 4 threads. It preserves current behavior but leaves the measured 2-vCPU oversubscription in place. TCP_NODELAY is a validated alternative with a larger cache-hit gain but targets HTTP configuration, not the backend, and would require a different delivered file; it is recorded as a follow-up rather than combined here.
+- **Simpler alternative / no-change:** keep 4 threads. It preserves current behavior but leaves the measured 2-vCPU oversubscription in place. TCP_NODELAY was kept as a separate cycle-2 change because it targets HTTP configuration, not the backend; it is now accepted with its own matched A/B.
 - **Expected effect:** approximately 2× lower whole-batch backend time on a 2-vCPU host, and ~30–40% lower unique-request end-to-end latency if HTTP overhead is unchanged. Cache-hit latency should be unchanged (it does not enter ORT).
 - **Before/after data, variability, correctness, errors, confounders, and conclusion:** AWS unique-input p50 improved 37.0%/45.4%/42.4% at concurrency 1/2/4; throughput improved 80.9%/95.7%/84.5%. Backend p50 improved 56.0%/54.5%/48.7% against the prior 4-thread instrumented run. Repeated/cache-hit p50 and throughput were unchanged, as expected. Two runs per variant were stable (changed c1 p50 149.850/149.858 ms; c4 398.715/409.098 ms), and alternating order did not reverse the effect. All 360 requests per run succeeded. Confounders: the client shares the CPU; the backend baseline is a different session; each level has 60 samples; p99 is unstable. Conclusion: the hypothesis is supported for this single-host synthetic workload; no production or multi-host claim is made.
 - **Correctness tests and comparison design:** unit/integration checks of the effective thread count and output parity between 2 and 4 threads; then matched AWS `c6i.large` baseline (pinned source, 4 threads) vs changed source (default 2 threads), same model, runtime, workload, cache state, warm-up, request counts and concurrency. Report per-level p50/p95, throughput, errors, and run-to-run variation. Do not claim p99 from 60 samples.
@@ -76,8 +76,12 @@ Source and artifact identities: model `models/resnet50-v2-7.onnx`, SHA-256 `7910
 - **Implemented:** `src/inference_engine.cpp` now selects `min(4, hardware_concurrency)` intra-op threads (floor 1), supports `ORT_INTRA_THREADS`, and logs the effective count. The AWS delivery allowlist now includes that file; the controller and verifier check for the thread selection, and the source-delivery tests cover it.
 - **Tested, with exact outcomes:** `python3 -m unittest discover -s tests -v` → 33 tests passed, 2 skipped (the opt-in real-worker classes). All four opt-in real-worker tests passed with the changed binary and model, including output parity between 2 and 4 threads within `1e-4`. Local matched A/B above: 180/180 requests succeeded; c1/c2/c4 p50 improved 35%/39%/36%; throughput improved 71%/74%/63%; backend p50 roughly halved.
 - **Reviewed and by whom:** labeled self-review performed against the actual diff, tests, raw AWS summaries, cleanup records, cost ledger, and rendered resume. Independent review remains outstanding because no separate reviewer was authorized for source disclosure. Self-review found no critical or important defect; the remaining items are the stated limitations.
-- **Not tested or blocked:** no current blocker. The HTTP delayed-ACK finding is reproduced but not implemented, by scope choice. Model accuracy was not assessed because the inputs are synthetic and the model has no ground-truth labels in this workload. The resume's independent visual review is the owner's responsibility.
-- **Risks and next steps:** the result is single-host and synthetic; do not generalize to production or multi-host. The backend baseline is from a different session than the changed runs. The HTTP nodelay follow-up should be a separate change with its own A/B. Run `python3 docs/investigation/audit.py` and review the diff before any commit.
+- **Not tested or blocked:** no current blocker. Cycle 2 (HTTP nodelay) is accepted and documented in [EXPERIMENTS.md](EXPERIMENTS.md). Model accuracy was not assessed because the inputs are synthetic and the model has no ground-truth labels in this workload. The resume's independent visual review is the owner's responsibility.
+- **Risks and next steps:** the result is single-host and synthetic; do not generalize to production or multi-host. The backend baseline is from a different session than the changed runs. Cycle 3 candidates are ranked in [EXPERIMENTS.md](EXPERIMENTS.md); the next one is input preparation/copy measurement. Run `python3 docs/investigation/audit.py` and review the diff before any commit.
+
+## Cycle 2 follow-up — HTTP TCP_NODELAY (accepted)
+
+The next cycle isolated the keep-alive delayed-ACK stall and enabled `TCP_NODELAY` on the worker server, gateway server, and gateway worker client. Against the accepted thread-tuned baseline, AWS cache-hit p50 fell from 98.26/98.13/97.94 ms to 1.16/2.15/3.54 ms at concurrency 1/2/4; system throughput rose from 13.81/27.72/55.26 to 311.49/894.77/955.64 req/s. Unique-input p50 fell 27.9%/17.8%/10.9%, and whole-batch backend p50 was unchanged within 1.2%. All 360 requests per run succeeded. Two changed runs cost $0.003273 + $0.003450. Details: [EXPERIMENTS.md](EXPERIMENTS.md), [aws-http-nodelay.md](../aws-http-nodelay.md), and `benchmarks/results/2026-11-02-aws-http-nodelay.json`.
 
 ## Portfolio and repository handoff
 

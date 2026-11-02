@@ -1,6 +1,6 @@
 > **Project provenance:** This is a fork of [AbhiramDodda/distributed-inference-engine-cpp](https://github.com/AbhiramDodda/distributed-inference-engine-cpp). The upstream repository did not specify a license when this fork was prepared. The original implementation and its measurements are credited to the upstream author.
 >
-> This fork adds a temporary AWS benchmark workflow, local cost and cleanup records, queue and batch timing instrumentation, and capacity-aware ONNX Runtime thread selection. See [AWS baseline](docs/aws-baseline.md), [instrumented results](docs/instrumented-aws-run.md), the [thread-tuning A/B](docs/aws-thread-tuning.md), and the [run guide](benchmark-aws/README.md). The upstream performance results below describe the original author's experiments; they are not results from our AWS runs.
+> This fork adds a temporary AWS benchmark workflow, local cost and cleanup records, queue and batch timing instrumentation, capacity-aware ONNX Runtime thread selection, and `TCP_NODELAY` keep-alive tuning. See [AWS baseline](docs/aws-baseline.md), [instrumented results](docs/instrumented-aws-run.md), the [thread-tuning A/B](docs/aws-thread-tuning.md), the [HTTP nodelay A/B](docs/aws-http-nodelay.md), and the [run guide](benchmark-aws/README.md). The upstream performance results below describe the original author's experiments; they are not results from our AWS runs.
 
 # Distributed Inference Engine
 
@@ -296,6 +296,13 @@ python3 tail_latency_sweep.py --concurrency 16 32 64 96 128 --requests-per-level
 
 ## Recent Improvements
 
+- **TCP_NODELAY on keep-alive responses**: the worker server, gateway server, and
+  gateway's worker client now disable Nagle. On the 2-vCPU benchmark host,
+  cache-hit p50 fell from about 98 ms to 1.2–3.5 ms and closed-loop system
+  throughput rose from 13.8–55.3 req/s to 311–956 req/s; unique-input p50 fell
+  11–28%. Whole-batch backend time was unchanged. The high cache-hit throughput
+  is client-bound at the upper levels, and this is a single-host synthetic-input
+  result. See the [HTTP nodelay report](docs/aws-http-nodelay.md).
 - **Capacity-aware ORT threads**: the worker no longer hardcodes four ONNX Runtime
   intra-op threads. It now uses `min(4, hardware_concurrency)` with a floor of one,
   so the two-vCPU benchmark host runs two threads instead of four, and logs the
@@ -448,6 +455,9 @@ ORT intra-op threads are selected in `inference_engine.cpp` as
 override the default for an experiment or a specific deployment.
 
 ### Tuning Circuit Breakers
+
+The gateway listens on port 8000 by default. Set `GATEWAY_PORT` to override it;
+the loopback integration test uses this to avoid a fixed-port conflict.
 
 Edit `gateway.cpp` to adjust:
 - Failure threshold (line 19): `5`

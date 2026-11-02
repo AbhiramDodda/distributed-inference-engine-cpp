@@ -9,6 +9,7 @@
 #include <optional>
 #include <utility>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <httplib.h>
 #include <nlohmann/json.hpp>
@@ -68,6 +69,9 @@ private:
         client->set_connection_timeout(5, 0);  // 5 seconds
         client->set_read_timeout(5, 0);
         client->set_keep_alive(true);
+        // The gateway's worker requests are small and use keep-alive. Disable
+        // Nagle so headers and body are not held behind delayed ACKs.
+        client->set_tcp_nodelay(true);
         return client;
     }
 
@@ -280,8 +284,23 @@ int main(int argc, char** argv) {
         workers.push_back(argv[i]);
     }
     
+    int listen_port = 8000;
+    if (const char* value = std::getenv("GATEWAY_PORT")) {
+        try {
+            const int requested = std::stoi(value);
+            if (requested > 0 && requested <= 65535) {
+                listen_port = requested;
+            }
+        } catch (const std::exception&) {
+            // Keep the default port.
+        }
+    }
+
     Gateway gateway(workers);
     httplib::Server server;
+    // Keep response headers and body from waiting on delayed ACKs when the
+    // client reuses a connection.
+    server.set_tcp_nodelay(true);
     // Each gateway handler blocks on a synchronous Post to a worker, so with the
     // default thread pool (hardware_concurrency-1, ~15) the gateway can only keep
     // ~15 requests in flight across the whole cluster -- starving the workers'
@@ -308,10 +327,10 @@ int main(int argc, char** argv) {
         auto stats = gateway.getStats();
         res.set_content(stats.dump(), "application/json");
     });
-    std::cout << "Gateway listening on port 8000" << std::endl;
+    std::cout << "Gateway listening on port " << listen_port << std::endl;
     std::cout << "Workers: " << workers.size() << std::endl;
     std::cout << "Circuit breakers enabled" << std::endl;
     std::cout << "Ready!" << std::endl;
-    server.listen("0.0.0.0", 8000);
+    server.listen("0.0.0.0", listen_port);
     return 0;
 }

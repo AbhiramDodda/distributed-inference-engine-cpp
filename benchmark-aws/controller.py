@@ -31,6 +31,7 @@ SOURCE_FILES = (
     "include/batch_processor.h",
     "src/worker_node.cpp",
     "src/inference_engine.cpp",
+    "src/gateway.cpp",
 )
 
 
@@ -174,6 +175,14 @@ def prepare_source(directory: Path, mode: str) -> dict:
             or "hardware_concurrency" not in engine_source
         ):
             raise RuntimeError("capacity-aware ORT thread selection is missing")
+        worker_source = (root / "src/worker_node.cpp").read_text(encoding="utf-8")
+        gateway_source = (root / "src/gateway.cpp").read_text(encoding="utf-8")
+        if "set_tcp_nodelay(true)" not in worker_source:
+            raise RuntimeError("worker TCP_NODELAY setting is missing")
+        if gateway_source.count("set_tcp_nodelay(true)") < 2:
+            raise RuntimeError("gateway TCP_NODELAY settings are missing")
+        if "GATEWAY_PORT" not in gateway_source:
+            raise RuntimeError("gateway test port override is missing")
 
     patch_bytes = patch.encode("utf-8")
     (directory / "source.patch").write_bytes(patch_bytes)

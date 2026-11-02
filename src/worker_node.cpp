@@ -210,6 +210,10 @@ int main(int argc, char** argv) {
     }
     WorkerNode& worker = *worker_ptr;
     httplib::Server server;
+    // Responses are written as headers followed by the body. Without TCP_NODELAY,
+    // Nagle plus delayed ACK can hold the body for a fixed interval on keep-alive
+    // connections, which dominates cache-hit latency. Enable it explicitly.
+    server.set_tcp_nodelay(true);
     // cpp-httplib's default server thread pool is hardware_concurrency-1 (~15).
     // Each /infer handler blocks in the batch processor waiting for its result,
     // so that default caps the number of requests that can be queued for

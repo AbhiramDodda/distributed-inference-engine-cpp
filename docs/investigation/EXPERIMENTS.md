@@ -33,30 +33,34 @@ This is the resumable record for [CONTINUOUS-OPTIMIZATION.md](CONTINUOUS-OPTIMIZ
 
 | Priority | Candidate | Evidence | Status |
 | ---: | --- | --- | --- |
-| 1 | HTTP keep-alive / Nagle delayed-ACK | Cache-hit p50 ~83 ms through the unmodified gateway vs 0.4–0.7 ms direct; values quantized near 1/42/84 ms; enabling `TCP_NODELAY` on worker server, gateway server, and gateway client reduced p50 to 0.8 ms locally. | **Selected for cycle 2** |
-| 2 | Input copy/padding/allocation | Six copies of the request vector on the cache-miss path; synthetic inputs are padded from 3 to 150,528 floats. Expected gain is small relative to backend time, but preparation is currently outside `batch_execution_us`. | Deferred; needs a preparation-only measurement |
-| 3 | Batching policy | Batch 4 amortizes fixed cost (165 ms/request vs 197 ms at batch 1), but benchmark concurrency is only 1–4. Larger batches would trade tail latency for throughput. | Deferred; needs a higher-concurrency sweep |
-| 4 | Gateway logging / JSON | Per-request `std::endl` logging and JSON parse/dump; nodelay probe removed most cache-hit latency without touching logging. | Lower priority; profile after cycle 2 |
-| 5 | Cache/routing | Repeated workload is ~100% hits; direct lookups are sub-millisecond. No demonstrated bottleneck. | No action |
-| 6 | Measurement quality | Closed-loop client, shared CPU, 60 samples/level, p99 unstable, backend baseline session differs. | Improve with paired runs; do not infer p99 |
-| 7 | Multi-host scaling | Not authorized and not measurable on one host. | Out of scope; document only |
+| — | HTTP keep-alive / Nagle delayed-ACK | Cache-hit p50 ~83 ms through the unmodified gateway vs 0.4–0.7 ms direct; enabling `TCP_NODELAY` reduced AWS cache-hit p50 to 1.16–3.54 ms. | **Accepted in cycle 2** |
+| 1 | Input copy/padding/allocation | Six copies of the request vector on the cache-miss path; synthetic inputs are padded from 3 to 150,528 floats. Expected gain is small relative to backend time, but preparation is currently outside `batch_execution_us`. | Next candidate; needs a preparation-only measurement |
+| 2 | Batching policy | Batch 4 amortizes fixed cost (165 ms/request vs 197 ms at batch 1), but benchmark concurrency is only 1–4. Larger batches would trade tail latency for throughput. | Deferred; needs a higher-concurrency sweep |
+| 3 | Gateway logging / JSON | Per-request `std::endl` logging and JSON parse/dump; nodelay removed most cache-hit latency without touching logging. | Lower priority; profile after input preparation |
+| 4 | Cache/routing | Repeated workload is ~100% hits; direct lookups are sub-millisecond. No demonstrated bottleneck. | No action |
+| 5 | Measurement quality | Closed-loop client, shared CPU, 60 samples/level, p99 unstable, baseline sessions differ. | Improve with paired runs; do not infer p99 |
+| 6 | Multi-host scaling | Not authorized and not measurable on one host. | Out of scope; document only |
 
-## Cycle 2 — HTTP keep-alive / Nagle (in progress)
+## Cycle 2 — HTTP keep-alive / Nagle (accepted)
 
 | Field | Record |
 | --- | --- |
 | Hypothesis | `CPPHTTPLIB_TCP_NODELAY` defaults to false. With keep-alive, the worker response, gateway response, and gateway request each can stall on Nagle/delayed-ACK, adding ~40 ms per affected hop. |
-| Baseline | Current accepted thread-tuned source with two ORT threads; AWS runs `infer-1f39a2ac8519f743` and `infer-0601374edef6f33d` (patch `9b4c0303…`). |
-| Intended one-variable change | Set `TCP_NODELAY` on the worker HTTP server, the gateway HTTP server, and the gateway's worker client. No API or numerical change. |
+| Baseline | Accepted thread-tuned source with two ORT threads; AWS runs `infer-1f39a2ac8519f743` and `infer-0601374edef6f33d` (patch `9b4c0303…`). |
+| Change | Set `TCP_NODELAY` on the worker HTTP server, the gateway HTTP server, and the gateway's worker client. Added `GATEWAY_PORT` for loopback tests without changing the default port. |
 | Alternatives | Keep the default and document the latency; change only the gateway client; replace keep-alive. Each is smaller but leaves at least one hop affected. |
 | Expected effect | Cache-hit p50 should fall from ~98 ms end-to-end to near the direct-worker range; unique-request end-to-end should improve by roughly the removed HTTP stall while backend time is unchanged. |
 | Adverse effects | More, smaller TCP segments; negligible on loopback and small JSON responses. No correctness effect expected. |
 | Workload | Same `load.py` 360-request workload; local A/B with cache-hit and unique levels; AWS A/B against the committed thread-tuned baseline. |
 | Acceptance rule | Lower cache-hit p50 without throughput regression, no failed requests, unchanged outputs and request association, and verified cleanup. |
-| Regression check | Opt-in gateway/worker integration test with a generous loopback latency ceiling; no brittle sub-millisecond assertion. |
-| Source identity | Baseline patch `9b4c0303f004235a091ebac22acb89c12a9631106650c364663bddab4e3ad87a`; changed patch recorded by the runner. |
-| Cost plan | Two changed runs, approximately $0.008 total; stop if cleanup or cost is uncertain. |
-| Status | Implementation pending. |
+| Correctness | Default suite 33 passed / 3 intended skips; all 5 opt-in real-worker/gateway tests passed; miss and hit outputs equal; request IDs match; source-delivery checks include `src/gateway.cpp`. |
+| Local A/B | `benchmark-aws/runs/local-cycle2-2026-11-02/`: two-CPU affinity. Cache-hit p50 83.2/84.0/83.9 ms → 1.6/2.1/4.3 ms; unique p50 149.1/235.2/408.4 ms → 108.0/193.6/365.4 ms. Backend unchanged. 240/240 requests succeeded. |
+| AWS A/B | Cache-hit p50 98.26/98.13/97.94 ms → 1.16/2.15/3.54 ms at c1/c2/c4; system throughput 13.81/27.72/55.26 → 311.49/894.77/955.64 req/s. Unique p50 149.85/231.69/403.91 → 108.02/190.42/360.00 ms; throughput 7.44/9.11/10.26 → 9.22/10.48/11.10 req/s. Backend p50 unchanged within 1.2%. No failures. |
+| Decision | Accepted. The cache-hit failure mode is removed, unique requests improve, backend compute is unchanged, and correctness checks pass. |
+| Artifacts | `benchmarks/results/2026-11-02-aws-http-nodelay.json`, `docs/aws-http-nodelay.md`, raw runs `infer-ff9ac124eb8e79ea`, `infer-2063d463870454ba`. |
+| Cost | Two new runs: $0.003273 + $0.003450 = $0.006723. Nine-run project estimate $0.031510. Cleanup independently verified. |
+| Limits | Single host, synthetic padded inputs, closed-loop client sharing CPU; high cache-hit throughput is client-bound. Baseline and changed AWS sessions differ. No p99 claim. |
+| Status | Accepted and documented. |
 
 ## Checkpoint rules
 
