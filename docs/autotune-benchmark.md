@@ -313,11 +313,11 @@ The harness lives in `benchmark-aws/`.
 
 ```sh
 # Build the benchmark environment locally.
-python3 -m venv /tmp/opencode/bench-venv
-/tmp/opencode/bench-venv/bin/pip install -r benchmark-aws/requirements-benchmark.txt
+python3 -m venv /tmp/bench-venv
+/tmp/bench-venv/bin/pip install -r benchmark-aws/requirements-benchmark.txt
 
 # Create the 500-image fixture.
-/tmp/opencode/bench-venv/bin/python benchmark-aws/autotune/prepare_data.py \
+/tmp/bench-venv/bin/python benchmark-aws/autotune/prepare_data.py \
   --output benchmark-aws/data/imagenet500 --count 500
 
 # Run one cold-cache capacity candidate.
