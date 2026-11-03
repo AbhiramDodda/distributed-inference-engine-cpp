@@ -27,12 +27,16 @@ INSTANCE_TYPE = "c6i.large"
 TAG_KEY = "temporary-inference-benchmark"
 MAX_SECONDS = 30 * 60
 BASE_REVISION = "c4d8a08b72df810ffad0dce6a993cecae22494bb"
-SOURCE_FILES = (
+BASELINE_SOURCE_FILES = (
     "include/batch_processor.h",
+    "include/engine_backend.h",
+    "include/inference_engine.h",
     "src/worker_node.cpp",
     "src/inference_engine.cpp",
+    "src/engine_backend.cpp",
     "src/gateway.cpp",
 )
+SOURCE_FILES = BASELINE_SOURCE_FILES + ("include/tensor_payload.h",)
 
 
 class Tee:
@@ -124,12 +128,17 @@ def prepare_source(directory: Path, mode: str) -> dict:
         if path.is_symlink() or not path.is_file():
             raise RuntimeError(f"source file is missing or is a symlink: {name}")
         if mode == "baseline":
-            content = subprocess.run(
-                ["git", "-C", str(root), "show", f"{BASE_REVISION}:{name}"],
-                check=True,
-                capture_output=True,
-                timeout=20,
-            ).stdout
+            try:
+                content = subprocess.run(
+                    ["git", "-C", str(root), "show", f"{BASE_REVISION}:{name}"],
+                    check=True,
+                    capture_output=True,
+                    timeout=20,
+                ).stdout
+            except subprocess.CalledProcessError:
+                # A new file in the allowlist has no baseline version. The
+                # baseline source does not reference it, so it is omitted.
+                continue
         else:
             content = path.read_bytes()
         if len(content) > 2_000_000:
@@ -165,9 +174,9 @@ def prepare_source(directory: Path, mode: str) -> dict:
         for name, expected in sources.items():
             if hashlib.sha256((root / name).read_bytes()).hexdigest() != expected:
                 raise RuntimeError(f"source changed while preparing the snapshot: {name}")
-        if "queue_wait_us" not in (root / SOURCE_FILES[0]).read_text(encoding="utf-8"):
+        if "queue_wait_us" not in (root / "include/batch_processor.h").read_text(encoding="utf-8"):
             raise RuntimeError("queue timing instrumentation is missing")
-        if "batch_execution_us" not in (root / SOURCE_FILES[1]).read_text(encoding="utf-8"):
+        if "batch_execution_us" not in (root / "src/worker_node.cpp").read_text(encoding="utf-8"):
             raise RuntimeError("batch timing instrumentation is missing")
         engine_source = (root / "src/inference_engine.cpp").read_text(encoding="utf-8")
         if (
@@ -183,6 +192,8 @@ def prepare_source(directory: Path, mode: str) -> dict:
             raise RuntimeError("gateway TCP_NODELAY settings are missing")
         if "GATEWAY_PORT" not in gateway_source:
             raise RuntimeError("gateway test port override is missing")
+        if "decode_float32_le" not in patch or "infer_tensor" not in patch:
+            raise RuntimeError("binary tensor transport is missing")
 
     patch_bytes = patch.encode("utf-8")
     (directory / "source.patch").write_bytes(patch_bytes)

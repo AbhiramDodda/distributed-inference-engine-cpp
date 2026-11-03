@@ -1,9 +1,13 @@
 #include "engine_backend.h"
 #include "lru_cache.h"
 #include "batch_processor.h"
+#include "tensor_payload.h"
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
+#include <stdexcept>
+#include <string>
 #include <thread>
 #include <chrono>
 #include <atomic>
@@ -33,6 +37,20 @@ static int resolveBatchDeadlineMs() {
     return 10;
 }
 
+static size_t resolvePositiveSize(const char* name, size_t fallback) {
+    if (const char* value = std::getenv(name)) {
+        try {
+            const unsigned long long requested = std::stoull(value);
+            if (requested > 0) {
+                return static_cast<size_t>(requested);
+            }
+        } catch (const std::exception&) {
+            // Use the fallback below.
+        }
+    }
+    return fallback;
+}
+
 // request/response types for batch processor
 struct InferenceRequest {
     std::string request_id;
@@ -60,11 +78,17 @@ public:
               model_path,
               std::getenv("TF_BUILD_DIR") ? std::getenv("TF_BUILD_DIR") : "",
               port % 3)),
-          cache_(1000),  // capacity: 1000 entries
+          cache_(resolvePositiveSize("CACHE_CAPACITY", 1000)),
           batch_deadline_ms_(resolveBatchDeadlineMs()),
+          max_batch_size_(
+              std::min(
+                  resolvePositiveSize("MAX_BATCH_SIZE", 32),
+                  engine_->maxBatchSize()
+              )
+          ),
           batch_processor_(
-              32,  // max_batch_size
-              std::chrono::milliseconds(batch_deadline_ms_),  // timeout
+              max_batch_size_,
+              std::chrono::milliseconds(batch_deadline_ms_),
               [this](const std::vector<InferenceRequest>& reqs) {
                   return this->processBatch(reqs);
               }
@@ -72,6 +96,8 @@ public:
         total_requests_.store(0);
         cache_hits_.store(0);
         std::cout << "Engine backend: " << engine_->name() << std::endl;
+        std::cout << "Model batch limit: " << engine_->maxBatchSize() << std::endl;
+        std::cout << "Effective batch size: " << max_batch_size_ << std::endl;
         batch_processor_.start();
     }
     
@@ -79,52 +105,67 @@ public:
         batch_processor_.stop();
     }
     
-    json handleInfer(const json& request) {
-        total_requests_++;
-        
-        std::string request_id = request["request_id"];
-        std::vector<float> input_data = request["input_data"];
+    struct TimedResult {
+        InferenceResponse response;
+        int64_t queue_wait_us;
+    };
 
-        // Check cache first
-        auto cache_start = std::chrono::high_resolution_clock::now();
+    TimedResult processInput(
+        const std::string& request_id,
+        const std::vector<float>& input_data
+    ) {
+        total_requests_++;
+
+        const auto cache_start = std::chrono::high_resolution_clock::now();
         auto cached = cache_.get(input_data);
         if (cached.has_value()) {
-            auto cache_end = std::chrono::high_resolution_clock::now();
+            const auto cache_end = std::chrono::high_resolution_clock::now();
             cache_hits_++;
-            json response;
-            response["request_id"] = request_id;
-            response["output_data"] = *cached;
-            response["node_id"] = node_id_;
-            response["cached"] = true;
+            InferenceResponse response;
+            response.request_id = request_id;
+            response.output_data = *cached;
+            response.inference_time_us = std::chrono::duration_cast<
+                std::chrono::microseconds>(cache_end - cache_start).count();
+            response.batch_execution_us = 0;
+            response.batch_size = 0;
+            response.cached = true;
+            return TimedResult{std::move(response), 0};
+        }
+
+        InferenceRequest inf_req{request_id, input_data};
+        auto timed = batch_processor_.process(inf_req);
+        cache_.put(input_data, timed.response.output_data);
+        return TimedResult{timed.response, timed.queue_wait_us};
+    }
+
+    json handleInfer(const json& request) {
+        const std::string request_id = request["request_id"];
+        const std::vector<float> input_data = request["input_data"];
+        const TimedResult timed = processInput(request_id, input_data);
+        const InferenceResponse& response_data = timed.response;
+
+        json response;
+        response["request_id"] = response_data.request_id;
+        response["output_data"] = response_data.output_data;
+        response["node_id"] = node_id_;
+        response["cached"] = response_data.cached;
+        response["inference_time_us"] = response_data.inference_time_us;
+        if (response_data.cached) {
             response["queue_wait_us"] = nullptr;
             response["batch_execution_us"] = nullptr;
             response["batch_size"] = nullptr;
-            response["inference_time_us"] = std::chrono::duration_cast<
-                std::chrono::microseconds>(cache_end - cache_start).count();
-
-            return response;
+        } else {
+            response["queue_wait_us"] = timed.queue_wait_us;
+            response["batch_execution_us"] = response_data.batch_execution_us;
+            response["batch_size"] = response_data.batch_size;
         }
-        
-        // Cache miss - use batch processor
-        InferenceRequest inf_req{request_id, input_data};
-        auto timed = batch_processor_.process(inf_req);
-        const InferenceResponse& inf_resp = timed.response;
-        cache_.put(input_data, inf_resp.output_data);
-        
-        json response;
-        response["request_id"] = inf_resp.request_id;
-        response["output_data"] = inf_resp.output_data;
-        response["node_id"] = node_id_;
-        response["cached"] = false;
-        response["inference_time_us"] = inf_resp.inference_time_us;
-        response["queue_wait_us"] = timed.queue_wait_us;
-        response["batch_execution_us"] = inf_resp.batch_execution_us;
-        response["batch_size"] = inf_resp.batch_size;
-        
         return response;
     }
-    
+
     int getBatchDeadlineMs() const { return batch_deadline_ms_; }
+    size_t getMaxBatchSize() const { return max_batch_size_; }
+    size_t getCacheCapacity() const { return cache_.capacity(); }
+    const std::string& getNodeId() const { return node_id_; }
 
     json getHealth() {
         auto batch_metrics = batch_processor_.getMetrics();
@@ -188,6 +229,7 @@ private:
     std::unique_ptr<IEngine> engine_;
     LRUCache<std::vector<float>, std::vector<float>, VectorHash> cache_;
     int batch_deadline_ms_;
+    size_t max_batch_size_;
     BatchProcessor<InferenceRequest, InferenceResponse> batch_processor_;
     
     std::atomic<int64_t> total_requests_;
@@ -257,6 +299,43 @@ int main(int argc, char** argv) {
             res.set_content(error.dump(), "application/json");
         }
     });
+    // raw float32 tensor endpoint
+    server.Post("/infer_tensor", [&worker](const httplib::Request& req, httplib::Response& res) {
+        try {
+            const std::string request_id = req.get_header_value("X-Request-Id");
+            if (request_id.empty() || request_id.size() > 256) {
+                throw std::invalid_argument("X-Request-Id must be 1-256 characters");
+            }
+            constexpr size_t kMaxTensorBytes = 16'000'000;
+            if (req.body.empty() || req.body.size() % sizeof(float) != 0 ||
+                req.body.size() > kMaxTensorBytes) {
+                throw std::invalid_argument(
+                    "tensor body must be a non-empty multiple of 4 bytes, at most 16 MB"
+                );
+            }
+            const auto input = decode_float32_le(req.body);
+            const auto timed = worker.processInput(request_id, input);
+            const auto& data = timed.response;
+            res.set_header("X-Request-Id", data.request_id);
+            res.set_header("X-Node-Id", worker.getNodeId());
+            res.set_header("X-Cached", data.cached ? "true" : "false");
+            res.set_header("X-Output-Elements", std::to_string(data.output_data.size()));
+            res.set_header("X-Batch-Size", std::to_string(data.batch_size));
+            res.set_header("X-Queue-Wait-Us", std::to_string(timed.queue_wait_us));
+            res.set_header("X-Batch-Execution-Us", std::to_string(data.batch_execution_us));
+            res.set_content(encode_float32_le(data.output_data), "application/octet-stream");
+        } catch (const std::invalid_argument& e) {
+            json error;
+            error["error"] = e.what();
+            res.status = 400;
+            res.set_content(error.dump(), "application/json");
+        } catch (const std::exception& e) {
+            json error;
+            error["error"] = e.what();
+            res.status = 500;
+            res.set_content(error.dump(), "application/json");
+        }
+    });
     // health endpoint
     server.Get("/health", [&worker](const httplib::Request&, httplib::Response& res) {
         auto health = worker.getHealth();
@@ -266,8 +345,8 @@ int main(int argc, char** argv) {
     std::cout << "Worker Node: " << node_id << std::endl;
     std::cout << "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" << std::endl;
     std::cout << "   Port:              " << port << std::endl;
-    std::cout << "   Cache Capacity:    1000 entries" << std::endl;
-    std::cout << "   Batch Size:        32 requests" << std::endl;
+    std::cout << "   Cache Capacity:    " << worker.getCacheCapacity() << " entries" << std::endl;
+    std::cout << "   Batch Size:        " << worker.getMaxBatchSize() << " requests" << std::endl;
     std::cout << "   Batch Timeout:     " << worker.getBatchDeadlineMs() << "ms" << std::endl;
     std::cout << "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" << std::endl;
     std::cout << "Ready to accept requests!" << std::endl;

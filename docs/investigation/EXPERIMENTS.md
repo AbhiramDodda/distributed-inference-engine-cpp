@@ -110,11 +110,31 @@ This is the resumable record for [CONTINUOUS-OPTIMIZATION.md](CONTINUOUS-OPTIMIZ
 | Cost | Two new runs: $0.003222 + $0.003552 = $0.006774. Thirteen-run project estimate $0.044703. Cleanup verified. |
 | Limits | Single host, synthetic padded inputs, closed-loop client sharing CPU; high cache-hit throughput is client-bound; baseline and changed sessions differ. |
 
+## Cycle 6 — multi-host image capacity and routing (accepted for the tested scope)
+
+| Field | Record |
+| --- | --- |
+| Hypothesis | The single-host cache-hit results do not measure inference capacity. On an isolated multi-host topology with real images and a cold cache, least-loaded routing should remove the hot-worker bottleneck that consistent hashing creates for a fixed image set, and the 80% CPU limit should cap the sustained rate below the latency-only knee. |
+| Baseline | Accepted cycle-5 source plus the image benchmark harness; 1/2/4/8 `c6i.large` workers, one `c6i.large` gateway, one `c6i.xlarge` load generator; 500-image ImageNet subset; ResNet50-v2-7; raw float32 transport. |
+| Change | Add `ROUTING_POLICY=hash\|least_loaded\|bounded_load` with per-node in-flight counters, remove per-request gateway logging, add per-level service restart and fresh-cache health checks, and cap the effective batch size to the model's static batch dimension. |
+| Workload | Cold cache (`CACHE_CAPACITY=1`), unique 500-image levels at concurrency 1/4/16/64/128 (and 256 for 4/8 workers), 500 requests per level; 5-minute holds; 60-second worker-kill test at 40 requests/s. |
+| Accuracy | 500 labeled images per model: ShuffleNetV2-10 72.2/90.6, MobileNetV2-7 71.8/90.8, ResNet18-v2-7 71.6/90.6, ResNet34-v2-7 76.2/92.2, ResNet50-v2-7 78.6/94.2 (top-1/top-5). |
+| Latency/error capacity | ResNet50 least-loaded 1/2/4/8 workers: 13.54/21.92/45.66/86.07 requests/s. 8-worker hash baseline: 31.44 requests/s; least-loaded is 2.7× higher and cuts p95 at concurrency 16 from 1,074 ms to 194 ms. |
+| Full-SLO sustained | 1/2/4/8 workers at 7/12/24/45 requests/s for 300 s each: 0 errors, p95 102–104 ms, 0 cache hits, worst worker mean CPU 55.8–67.5%, worst p95 CPU 60–69%, maximum sample 77%. The 8-worker 45 requests/s run is 13,500 requests with p95 104.0 ms and p99 105.8 ms. |
+| CPU boundary | At 8 workers, 50 requests/s is marginal (worst mean 67.0%, p95 80%, max 82%); 60 requests/s fails (worst mean 86.3%, p95 95%); 84 requests/s passes latency/errors but uses 94.8% CPU. Do not report the 84 requests/s run as a full-SLO result. |
+| Failure and consistency | Worker kill at 40 requests/s: 2,400 requests, 0 failures, p95 114.0 ms; 19 of 20 labels were served by more than one worker; 0 top-1 conflicts; maximum output difference 0.0. |
+| Transport | Binary vs Python JSON at 2 workers: 21.41 vs 12.98 requests/s at concurrency 4; 23.05 vs 11.11 at concurrency 16. The JSON client reached 101% CPU, so the gap includes client serialization. |
+| Correctness | 53 default tests passed / 10 intended skips; 10/10 benchmark load tests; routing integration test passes with two fake workers; static batch-1 model test passes; source-delivery tests include the new headers and engine backend. |
+| Decision | Accepted for the tested workload. Least-loaded routing and the static batch cap are real improvements. The CPU limit, not latency, sets the sustained capacity. Production readiness remains blocked by TLS/auth, rate limiting, graceful shutdown, observability, and model versioning. |
+| Artifacts | `docs/autotune-benchmark.md`, `benchmarks/results/2026-11-02-autotune-summary.json`; raw runs listed in the report. |
+| Cost | New campaign estimate $3.267; grand total $3.312 of the $10 budget. Cleanup verified: 0 active instances, 0 tagged security groups, 0 tagged volumes. |
+| Limits | 500-image subset, coarse closed-loop sweep, 5-minute holds, one region, Python JSON client, no spare worker in the failover test, no process-pool or gateway-batching implementation. |
+
 ## Stop condition and future work
 
-The current single-host, synthetic, closed-loop scope has no remaining candidate with a demonstrated material gain. Gateway per-request logging was measured and rejected (≤2.5% difference); cache/routing has no demonstrated bottleneck; measurement quality is a reporting constraint rather than a code change; multi-host scaling is outside the current authorization and budget.
+Cycle 6 closes the multi-host capacity item for the tested workload. The remaining constraints are production concerns, not single-variable performance candidates: TLS and authentication, rate limiting and backpressure, graceful shutdown, metrics export, model versioning, multi-AZ replacement, and a long-duration soak.
 
-Future work that would justify another cycle: an approved multi-host experiment with network/security/cost design; an open-loop client to separate server capacity from the closed-loop client; a mixed hit/miss workload to test cache and routing under realistic repetition; or an opt-in gateway response-validation mode if the passthrough trust tradeoff is not acceptable for a deployment. Each requires a new baseline, a one-variable change, and its own correctness and cost plan.
+Future work that would justify another cycle: a process-pool or multi-process-per-host comparison; gateway-side batching; a CPU-aware autoscaler; a longer hold with memory and file-descriptor tracking; a multi-AZ failover with spare capacity; and a compiled JSON client to isolate server-side transport cost. Each requires a new baseline, a one-variable change, and its own correctness and cost plan.
 
 ## Checkpoint rules
 

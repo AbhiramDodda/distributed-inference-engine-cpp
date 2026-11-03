@@ -39,6 +39,8 @@ dist/
 
 # Temporary cloud benchmark results and ephemeral credentials
 benchmark-aws/runs/
+benchmark-aws/data/
+benchmark-aws/models/
 
 # Local lint cache
 .ruff_cache/

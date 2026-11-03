@@ -108,4 +108,7 @@ if(BUILD_TESTING)
     target_link_libraries(test_batch_shapes Threads::Threads onnxruntime)
     add_test(NAME batch_shapes COMMAND test_batch_shapes)
     set_tests_properties(batch_shapes PROPERTIES TIMEOUT 120)
+
+    add_executable(test_tensor_payload tests/test_tensor_payload.cpp)
+    add_test(NAME tensor_payload COMMAND test_tensor_payload)
 endif()

@@ -19,6 +19,9 @@ public:
     int getShardId() const { return shard_id_; }
     std::vector<int64_t> getInputShape() const;
     std::vector<int64_t> getOutputShape() const;
+    // Static batch limit from the model input shape. Dynamic batch models
+    // report a large value; static batch-1 models report 1.
+    size_t maxBatchSize() const;
     
 private:
     void initializeSession();
@@ -34,6 +37,7 @@ private:
     std::vector<const char*> output_names_;
     std::vector<int64_t> input_shape_;
     std::vector<int64_t> output_shape_;
+    size_t max_batch_size_ = 1024;
     std::mutex mutex_;
 };
 

@@ -1,6 +1,6 @@
 > **Project provenance:** This is a fork of [AbhiramDodda/distributed-inference-engine-cpp](https://github.com/AbhiramDodda/distributed-inference-engine-cpp). The upstream repository did not specify a license when this fork was prepared. The original implementation and its measurements are credited to the upstream author.
 >
-> This fork adds a temporary AWS benchmark workflow, local cost and cleanup records, queue and batch timing instrumentation, capacity-aware ONNX Runtime thread selection, `TCP_NODELAY` keep-alive tuning, a 10 ms batch deadline, and gateway response passthrough. See [AWS baseline](docs/aws-baseline.md), [instrumented results](docs/instrumented-aws-run.md), the [thread-tuning A/B](docs/aws-thread-tuning.md), the [HTTP nodelay A/B](docs/aws-http-nodelay.md), the [batch-deadline A/B](docs/aws-batch-deadline.md), the [gateway passthrough A/B](docs/aws-gateway-passthrough.md), and the [run guide](benchmark-aws/README.md). The upstream performance results below describe the original author's experiments; they are not results from our AWS runs.
+> This fork adds a temporary AWS benchmark workflow, an image auto-tuning harness, local cost and cleanup records, queue and batch timing instrumentation, capacity-aware ONNX Runtime thread selection, `TCP_NODELAY` keep-alive tuning, a 10 ms batch deadline, gateway response passthrough, binary tensor transport, selectable least-loaded routing, and a static batch-size cap. See [AWS baseline](docs/aws-baseline.md), [instrumented results](docs/instrumented-aws-run.md), the [thread-tuning A/B](docs/aws-thread-tuning.md), the [HTTP nodelay A/B](docs/aws-http-nodelay.md), the [batch-deadline A/B](docs/aws-batch-deadline.md), the [gateway passthrough A/B](docs/aws-gateway-passthrough.md), the [image auto-tuning benchmark](docs/autotune-benchmark.md), and the [run guide](benchmark-aws/README.md). The upstream performance results below describe the original author's experiments; they are not results from our AWS runs.
 
 # Distributed Inference Engine
 
@@ -19,6 +19,19 @@ A high-performance distributed inference system for ONNX models featuring consis
 - **Circuit Breakers**: Monitors worker health and automatically routes around failed nodes
 - **Load Balancing**: Distributes requests across multiple worker nodes
 - **CUDA Support**: Optional GPU acceleration with automatic CPU fallback
+
+## Image auto-tuning benchmark
+
+The 2026-11-02 campaign used a 500-image ImageNet subset, five pinned ONNX models, private AWS `c6i.large` workers, and a separate `c6i.xlarge` load generator. All capacity runs use a cold cache and real model outputs.
+
+- 8-worker ResNet50 full-SLO hold: **45 requests/s**, p95 **104 ms**, p99 **106 ms**, 0 errors, worst worker mean CPU **56%** (maximum sample 67%).
+- 8-worker latency/error capacity: **86 requests/s**. The 84 requests/s hold meets latency and errors but uses about 95% CPU, above the 80% limit.
+- Least-loaded routing raises 8-worker latency/error capacity from **31.4 to 86.1 requests/s** (2.7×) compared with consistent hashing.
+- ShuffleNetV2-10: **201 requests/s** on 2 workers at **72.2% top-1**. ResNet50-v2-7: **21.9 requests/s** at **78.6% top-1** on the same data.
+- Worker kill at 40 requests/s: **0 failed requests**, 0 top-1 conflicts, 0.0 output difference.
+- Estimated cost **$3.31 of $10**. No active benchmark resources remain.
+
+These results are not a production-readiness claim. TLS, authentication, rate limiting, graceful shutdown, observability, model versioning, and multi-AZ replacement remain open. See the [full report](docs/autotune-benchmark.md) and the [sanitized summary](benchmarks/results/2026-11-02-autotune-summary.json).
 
 ## Architecture
 

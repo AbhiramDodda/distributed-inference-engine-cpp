@@ -1,6 +1,7 @@
 #ifndef ENGINE_BACKEND_H
 #define ENGINE_BACKEND_H
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
@@ -11,6 +12,9 @@ struct IEngine {
     virtual ~IEngine() = default;
     virtual std::vector<std::vector<float>> batchPredict(
         const std::vector<std::vector<float>>& inputs) = 0;
+    // Conservative default for backends that cannot report a static batch
+    // limit. The ORT backend overrides this with the model's actual limit.
+    virtual size_t maxBatchSize() const { return 1; }
     virtual const char* name() const = 0;   // active backend, for logs / health
 };
 

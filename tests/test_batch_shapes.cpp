@@ -34,6 +34,11 @@ int main() {
     }
 
     InferenceEngine engine(model, 0);
+    if (engine.maxBatchSize() == 1) {
+        std::cout << "static batch-1 model; skipping multi-sample checks\n";
+        return 0;
+    }
+    require(engine.maxBatchSize() >= 2, "dynamic batch model reported no batch capacity");
     std::vector<float> oversized(200000);
     for (size_t i = 0; i < oversized.size(); ++i) {
         oversized[i] = 1.0f + static_cast<float>(i % 97) * 0.01f;
