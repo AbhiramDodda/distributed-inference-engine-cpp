@@ -21,10 +21,12 @@ jobs:
           python-version: '3.12'
       - name: Install pinned lint tool
         run: python -m pip install -r requirements-dev.txt
+      - name: Install benchmark dependencies
+        run: python -m pip install -r benchmark-aws/requirements-benchmark.txt
       - name: Lint and check formatting
         run: |
-          ruff check benchmark-aws/*.py tests/*.py
-          ruff format --check benchmark-aws/*.py tests/*.py
+          ruff check benchmark-aws/*.py benchmark-aws/autotune/*.py tests/*.py
+          ruff format --check benchmark-aws/*.py benchmark-aws/autotune/*.py tests/*.py
       - name: Test Python components
         run: python -m unittest discover -s tests -v
       - name: Test queue timings
@@ -32,4 +34,4 @@ jobs:
           g++ -std=c++17 -DNDEBUG -Wall -Wextra -pthread -I include tests/test_batch_timings.cpp -o /tmp/test_batch_timings
           timeout 10s /tmp/test_batch_timings
       - name: Check remote script syntax
-        run: bash -n benchmark-aws/remote.sh setup.sh
+        run: bash -n benchmark-aws/remote.sh setup.sh benchmark-aws/multihost/*.sh
