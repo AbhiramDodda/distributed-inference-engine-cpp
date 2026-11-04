@@ -287,6 +287,9 @@ int main(int argc, char** argv) {
     // Nagle plus delayed ACK can hold the body for a fixed interval on keep-alive
     // connections, which dominates cache-hit latency. Enable it explicitly.
     server.set_tcp_nodelay(true);
+    // Bound idle keep-alive connections so shutdown does not wait for the
+    // library default of five seconds.
+    server.set_keep_alive_timeout(2);
     // cpp-httplib's default server thread pool is hardware_concurrency-1 (~15).
     // Each /infer handler blocks in the batch processor waiting for its result,
     // so that default caps the number of requests that can be queued for

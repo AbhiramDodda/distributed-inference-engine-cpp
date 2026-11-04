@@ -517,6 +517,9 @@ int main(int argc, char** argv) {
     // Keep response headers and body from waiting on delayed ACKs when the
     // client reuses a connection.
     server.set_tcp_nodelay(true);
+    // Bound idle keep-alive connections so shutdown does not wait for the
+    // library default of five seconds.
+    server.set_keep_alive_timeout(2);
     // Each gateway handler blocks on a synchronous Post to a worker, so with the
     // default thread pool (hardware_concurrency-1, ~15) the gateway can only keep
     // ~15 requests in flight across the whole cluster -- starving the workers'
