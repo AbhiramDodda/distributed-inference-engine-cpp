@@ -35,6 +35,7 @@ public:
 
     void start();
     void stop();
+    bool isRunning() const { return running_.load(); }
     struct Metrics {
         int64_t total_requests;
         int64_t total_batches;
@@ -65,6 +66,7 @@ private:
     BatchCallback callback_;
     std::queue<QueuedRequest> request_queue_;
     std::mutex queue_mutex_;
+    std::mutex stop_mutex_;
     std::condition_variable queue_cv_;
     std::thread worker_thread_;
     std::atomic<bool> running_{false};
@@ -98,6 +100,7 @@ void BatchProcessor<Request, Response>::start() {
 
 template<typename Request, typename Response>
 void BatchProcessor<Request, Response>::stop() {
+    std::lock_guard<std::mutex> stop_lock(stop_mutex_);
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
         running_ = false;
@@ -177,6 +180,7 @@ void BatchProcessor<Request, Response>::processingLoop() {
         queue_cv_.wait_until(lock, deadline, [this] {
             return request_queue_.size() >= max_batch_size_ || !running_;
         });
+        if (!running_) break;
 
         batch.clear();
         while (!request_queue_.empty() && batch.size() < max_batch_size_) {

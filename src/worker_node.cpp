@@ -306,6 +306,11 @@ int main(int argc, char** argv) {
             auto response = worker.handleInfer(request);
             
             res.set_content(response.dump(), "application/json");
+        } catch (const nlohmann::json::parse_error& e) {
+            json error;
+            error["error"] = e.what();
+            res.status = 400;
+            res.set_content(error.dump(), "application/json");
         } catch (const inference::ValidationError& e) {
             json error;
             error["error"] = e.what();

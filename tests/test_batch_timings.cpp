@@ -73,8 +73,10 @@ int main() {
         std::promise<void> release;
         auto release_future = release.get_future().share();
         BatchProcessor<int, int> shutdown_processor(1, 2s, [&](const std::vector<int>& values) {
-            started.set_value();
-            release_future.wait();
+            if (values[0] == 1) {
+                started.set_value();
+                release_future.wait();
+            }
             return values;
         });
         shutdown_processor.start();
@@ -88,9 +90,17 @@ int main() {
         }
         require(shutdown_processor.getMetrics().total_requests == 2);
         auto stopping = std::async(std::launch::async, [&] { shutdown_processor.stop(); });
+        const auto stop_deadline = std::chrono::steady_clock::now() + 2s;
+        while (shutdown_processor.isRunning() &&
+               std::chrono::steady_clock::now() < stop_deadline) {
+            std::this_thread::yield();
+        }
+        require(!shutdown_processor.isRunning());
+        auto concurrent_stop = std::async(std::launch::async, [&] { shutdown_processor.stop(); });
         release.set_value();
         require(first.wait_for(2s) == std::future_status::ready);
         require(stopping.wait_for(2s) == std::future_status::ready);
+        require(concurrent_stop.wait_for(2s) == std::future_status::ready);
         bool second_failed = false;
         try {
             second.get();

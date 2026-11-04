@@ -95,6 +95,21 @@ class ApiValidationTests(unittest.TestCase):
             finally:
                 exc.close()
 
+    def post_raw(self, port, body):
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/infer",
+            body,
+            {"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                return response.status, json.load(response)
+        except urllib.error.HTTPError as exc:
+            try:
+                return exc.code, json.load(exc)
+            finally:
+                exc.close()
+
     def get_json(self, port, path):
         with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=5) as response:
             return json.load(response)
@@ -110,6 +125,15 @@ class ApiValidationTests(unittest.TestCase):
 
             status, body = self.post(port, {"request_id": "", "input_data": [1.0]})
             self.assertEqual(status, 400)
+
+            status, body = self.post_raw(port, b"")
+            self.assertEqual(status, 400)
+
+            status, body = self.post_raw(port, b"{")
+            self.assertEqual(status, 400)
+
+        stats = self.get_json(self.gateway_port, "/stats")
+        self.assertTrue(all(item["failures"] == 0 for item in stats["circuit_breakers"]))
 
     def test_valid_request_remains_unchanged_and_breakers_are_clean(self):
         status, body = self.post(
