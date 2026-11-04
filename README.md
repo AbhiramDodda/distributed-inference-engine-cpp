@@ -37,6 +37,10 @@ These results are not a production-readiness claim. TLS, authentication, rate li
 
 The worker and gateway now handle `SIGTERM` and `SIGINT` with a bounded shutdown, fail queued batch work instead of leaving handlers blocked, return HTTP 400 for malformed JSON inference requests, and have a loopback worker-failure test. CI builds the real C++ targets with pinned ONNX Runtime and runs the real-model loopback tests. The shutdown and failover evidence is loopback-only. TLS, authentication, rate limiting, metrics export, model versioning, and multi-AZ replacement remain open. See [production hardening](docs/production-hardening.md).
 
+## Overload protection
+
+The gateway supports an opt-in global in-flight limit, `ADMISSION_MAX_INFLIGHT`. At the limit it returns HTTP `503` with `Retry-After: 1` and exposes accepted, rejected, and current in-flight counters on `/stats`. In a local 2-worker test at 50 offered requests/s, a limit of 7 kept accepted p95 at 373–429 ms and p99 at 383–450 ms across three runs while shedding 48–57% as controlled 503s. The baseline accepted every request but p95 rose to 6.2–9.0 s. This is local evidence, not an AWS or production capacity claim. See [overload protection](docs/overload-protection.md).
+
 ## Architecture
 
 ```

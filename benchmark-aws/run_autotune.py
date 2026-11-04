@@ -40,7 +40,7 @@ def model_sha(path: Path) -> str:
 
 
 def start_services(args: argparse.Namespace, output: Path, phase: str):
-    worker_port = free_port()
+    worker_ports = [free_port() for _ in range(args.workers)]
     gateway_port = free_port()
     env = os.environ.copy()
     env.update(
@@ -50,38 +50,44 @@ def start_services(args: argparse.Namespace, output: Path, phase: str):
             "MAX_BATCH_SIZE": str(args.max_batch),
             "CACHE_CAPACITY": str(args.cache),
             "GATEWAY_PORT": str(gateway_port),
+            "ADMISSION_MAX_INFLIGHT": str(args.admission_max),
         }
     )
     logs = []
-    worker_log = open(output / f"{phase}-worker.log", "w")
-    logs.append(worker_log)
-    worker = subprocess.Popen(
-        [args.worker_bin, str(worker_port), "autotune", str(args.model)],
-        stdout=worker_log,
-        stderr=subprocess.STDOUT,
-        env=env,
-    )
+    workers = []
+    for index, port in enumerate(worker_ports, start=1):
+        worker_log = open(output / f"{phase}-worker-{index}.log", "w")
+        logs.append(worker_log)
+        workers.append(
+            subprocess.Popen(
+                [args.worker_bin, str(port), f"autotune_{index}", str(args.model)],
+                stdout=worker_log,
+                stderr=subprocess.STDOUT,
+                env=env,
+            )
+        )
     gateway_log = open(output / f"{phase}-gateway.log", "w")
     logs.append(gateway_log)
     gateway = subprocess.Popen(
-        [args.gateway_bin, f"localhost:{worker_port}"],
+        [args.gateway_bin, *(f"localhost:{port}" for port in worker_ports)],
         stdout=gateway_log,
         stderr=subprocess.STDOUT,
         env=env,
     )
     target = f"http://127.0.0.1:{gateway_port}"
     try:
-        wait_url(f"http://127.0.0.1:{worker_port}/health")
+        for port in worker_ports:
+            wait_url(f"http://127.0.0.1:{port}/health")
         wait_url(f"{target}/stats")
         time.sleep(0.5)
     except Exception:
-        stop_services(worker, gateway, logs)
+        stop_services(workers, gateway, logs)
         raise
-    return worker, gateway, target, logs
+    return workers, gateway, target, logs
 
 
-def stop_services(worker, gateway, logs) -> None:
-    for process in (gateway, worker):
+def stop_services(workers, gateway, logs) -> None:
+    for process in [gateway, *(workers or [])]:
         if process is None:
             continue
         process.terminate()
@@ -106,10 +112,11 @@ def run_candidate(args: argparse.Namespace) -> int:
 
     summaries = []
     if args.accuracy:
-        worker = gateway = None
+        workers = []
+        gateway = None
         logs = []
         try:
-            worker, gateway, target, logs = start_services(args, output, "accuracy")
+            workers, gateway, target, logs = start_services(args, output, "accuracy")
             summary, rows, accuracy_result = asyncio.run(
                 loadgen.run(
                     target,
@@ -135,16 +142,18 @@ def run_candidate(args: argparse.Namespace) -> int:
                 (output / "accuracy.json").write_text(json.dumps(accuracy_result, indent=2) + "\n")
                 print(json.dumps(accuracy_result), flush=True)
         finally:
-            stop_services(worker, gateway, logs)
+            stop_services(workers, gateway, logs)
 
     for level in [] if args.accuracy_only else args.levels:
-        worker = gateway = None
+        workers = []
+        gateway = None
         logs = []
         try:
-            worker, gateway, target, logs = start_services(args, output, f"level-{level}")
+            workers, gateway, target, logs = start_services(args, output, f"level-{level}")
             count = (
                 max(1, int(args.rate * args.duration)) if args.rate is not None else args.requests
             )
+            concurrency = args.rate_concurrency if args.rate is not None else level
             summary, rows, _ = asyncio.run(
                 loadgen.run(
                     target,
@@ -153,11 +162,11 @@ def run_candidate(args: argparse.Namespace) -> int:
                     args.mode,
                     args.transport,
                     count,
-                    level,
+                    concurrency,
                     args.rate,
                     args.timeout,
                     False,
-                    f"c{level}",
+                    f"rate{args.rate}" if args.rate is not None else f"c{level}",
                     args.seed,
                 )
             )
@@ -171,7 +180,7 @@ def run_candidate(args: argparse.Namespace) -> int:
             )
             print(json.dumps(summary), flush=True)
         finally:
-            stop_services(worker, gateway, logs)
+            stop_services(workers, gateway, logs)
 
     run_record = {
         "model": str(model),
@@ -184,10 +193,13 @@ def run_candidate(args: argparse.Namespace) -> int:
         "requests_per_level": args.requests,
         "rate": args.rate,
         "duration": args.duration,
+        "rate_concurrency": args.rate_concurrency,
         "threads": args.threads,
         "deadline_ms": args.deadline,
         "max_batch": args.max_batch,
         "cache_capacity": args.cache,
+        "workers": args.workers,
+        "admission_max_inflight": args.admission_max,
         "summaries": summaries,
     }
     (output / "run.json").write_text(json.dumps(run_record, indent=2) + "\n")
@@ -207,6 +219,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--requests", type=int, default=50)
     parser.add_argument("--rate", type=float)
     parser.add_argument("--duration", type=float, default=60.0)
+    parser.add_argument("--rate-concurrency", type=int, default=128)
     parser.add_argument("--accuracy", action="store_true")
     parser.add_argument("--accuracy-only", action="store_true")
     parser.add_argument("--accuracy-limit", type=int, default=100)
@@ -214,6 +227,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--deadline", type=int, default=10)
     parser.add_argument("--max-batch", type=int, default=32)
     parser.add_argument("--cache", type=int, default=1000)
+    parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--admission-max", type=int, default=0)
     parser.add_argument("--timeout", type=float, default=60.0)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--force", action="store_true")

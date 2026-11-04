@@ -1,6 +1,6 @@
 # Investigation record
 
-Status: **complete for cycles 1–7.** The continuous cycle ledger is [EXPERIMENTS.md](EXPERIMENTS.md); the performance candidate queue is exhausted within the current single-host, authorization, and budget scope. Cycle 7 closed the safe-operation gaps found after the image benchmark. Independent review remains outstanding; verification is a labeled self-review.
+Status: **complete for cycles 1–8.** The continuous cycle ledger is [EXPERIMENTS.md](EXPERIMENTS.md); the performance candidate queue is exhausted within the current single-host, authorization, and budget scope. Cycle 7 closed the safe-operation gaps found after the image benchmark. Independent review remains outstanding; verification is a labeled self-review.
 
 ## Context and scope
 
@@ -103,6 +103,13 @@ Cycle 7 addressed operational gaps that the image benchmark exposed:
 - CI has a `cpp` job that builds the real worker/gateway with pinned ONNX Runtime and runs `ctest` and the real-model loopback tests.
 
 Evidence: 70 Python tests passed with 7 intended skips; 4/4 CTest cases passed; 11 real worker/gateway tests passed. These are loopback and CI results, not a deployed-network or production-availability claim. See `docs/production-hardening.md`.
+
+## Overload admission follow-up (cycle 8)
+
+- Added opt-in `ADMISSION_MAX_INFLIGHT` at the gateway. It returns controlled HTTP 503 with `Retry-After: 1` when the global in-flight limit is reached and exposes accepted/rejected/in-flight counters in `/stats`.
+- The admission test proves the rejected request never reaches the worker and that the counters remain consistent.
+- Local 2-worker, 50 req/s open-loop runs: baseline accepted all requests but p95 was 6.2–9.0 s; admission limit 7 accepted 214–264 of 500 with p95 427.5–428.9 ms and p99 449.7–450.1 ms. The rest were controlled 503s.
+- This protects accepted latency; it does not add capacity. The result is local, uses static limits, and has no client retry policy. See `docs/overload-protection.md`.
 
 ## Portfolio and repository handoff
 

@@ -121,6 +121,16 @@ public:
                 "ROUTING_POLICY must be hash, least_loaded, or bounded_load"
             );
         }
+        if (const char* value = std::getenv("ADMISSION_MAX_INFLIGHT")) {
+            try {
+                const unsigned long long requested = std::stoull(value);
+                if (requested > 0) {
+                    admission_max_inflight_ = static_cast<size_t>(requested);
+                }
+            } catch (const std::exception&) {
+                // Keep admission disabled.
+            }
+        }
         if (const char* value = std::getenv("BOUNDED_LOAD_FACTOR")) {
             try {
                 const double requested = std::stod(value);
@@ -157,6 +167,35 @@ public:
             std::cout << "Connected to worker: " << worker << std::endl;
         }
         std::cout << "Routing policy: " << routing_policy_ << std::endl;
+        std::cout << "Admission max in-flight: "
+                  << (admission_max_inflight_ == 0 ? "disabled" : std::to_string(admission_max_inflight_))
+                  << std::endl;
+    }
+
+    struct AdmissionGuard {
+        std::atomic<int64_t>* counter;
+        explicit AdmissionGuard(std::atomic<int64_t>* value) : counter(value) {}
+        ~AdmissionGuard() {
+            if (counter != nullptr) counter->fetch_sub(1);
+        }
+        AdmissionGuard(const AdmissionGuard&) = delete;
+        AdmissionGuard& operator=(const AdmissionGuard&) = delete;
+        AdmissionGuard(AdmissionGuard&& other) noexcept : counter(other.counter) {
+            other.counter = nullptr;
+        }
+        AdmissionGuard& operator=(AdmissionGuard&&) = delete;
+    };
+
+    std::optional<AdmissionGuard> admitRequest() {
+        const int64_t current = admission_in_flight_.fetch_add(1);
+        if (admission_max_inflight_ > 0 &&
+            current >= static_cast<int64_t>(admission_max_inflight_)) {
+            admission_in_flight_.fetch_sub(1);
+            admission_rejected_.fetch_add(1);
+            return std::nullopt;
+        }
+        admission_accepted_.fetch_add(1);
+        return AdmissionGuard(&admission_in_flight_);
     }
     
     std::string routeRequest(const json& request) {
@@ -214,6 +253,12 @@ public:
         stats["total_workers"] = nodes.size();
         stats["routing_policy"] = routing_policy_;
         stats["bounded_load_factor"] = load_factor_;
+        json admission;
+        admission["max_in_flight"] = admission_max_inflight_;
+        admission["in_flight"] = admission_in_flight_.load();
+        admission["accepted"] = admission_accepted_.load();
+        admission["rejected"] = admission_rejected_.load();
+        stats["admission"] = admission;
         json loads = json::array();
         for (const auto& node : nodes) {
             json item;
@@ -479,6 +524,10 @@ private:
     std::string routing_policy_ = "hash";
     double load_factor_ = 1.25;
     std::atomic<size_t> tie_break_counter_{0};
+    size_t admission_max_inflight_ = 0;
+    std::atomic<int64_t> admission_in_flight_{0};
+    std::atomic<int64_t> admission_accepted_{0};
+    std::atomic<int64_t> admission_rejected_{0};
 };
 
 int main(int argc, char** argv) {
@@ -530,6 +579,16 @@ int main(int argc, char** argv) {
     // inference endpoint
     server.Post("/infer", [&gateway](const httplib::Request& req, httplib::Response& res) {
         try {
+            auto admission = gateway.admitRequest();
+            if (!admission.has_value()) {
+                res.status = 503;
+                res.set_header("Retry-After", "1");
+                res.set_content(
+                    R"({"error":"server overloaded","retry_after_ms":1000})",
+                    "application/json"
+                );
+                return;
+            }
             auto request = json::parse(req.body);
             inference::validateInferRequest(request);
             auto response = gateway.routeRequest(request);
@@ -555,6 +614,16 @@ int main(int argc, char** argv) {
     // raw float32 tensor endpoint
     server.Post("/infer_tensor", [&gateway](const httplib::Request& req, httplib::Response& res) {
         try {
+            auto admission = gateway.admitRequest();
+            if (!admission.has_value()) {
+                res.status = 503;
+                res.set_header("Retry-After", "1");
+                res.set_content(
+                    R"({"error":"server overloaded","retry_after_ms":1000})",
+                    "application/json"
+                );
+                return;
+            }
             const std::string request_id = req.get_header_value("X-Request-Id");
             if (request_id.empty() || request_id.size() > 256) {
                 throw std::invalid_argument("X-Request-Id must be 1-256 characters");
