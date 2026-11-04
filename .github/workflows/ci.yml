@@ -55,9 +55,10 @@ jobs:
             ort.tgz | sha256sum -c -
           tar -xzf ort.tgz
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
-          -DONNXRUNTIME_INCLUDE_DIR="$PWD/onnxruntime-linux-x64-1.23.2/include" \
-          -DONNXRUNTIME_LIB_DIR="$PWD/onnxruntime-linux-x64-1.23.2/lib"
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DONNXRUNTIME_INCLUDE_DIR="$PWD/onnxruntime-linux-x64-1.23.2/include" \
+            -DONNXRUNTIME_LIB_DIR="$PWD/onnxruntime-linux-x64-1.23.2/lib"
       - name: Build
         run: cmake --build build --parallel 2
       - name: CTest
