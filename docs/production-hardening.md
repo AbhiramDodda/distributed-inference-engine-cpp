@@ -11,8 +11,8 @@ This phase closes the reliability gaps identified after the image benchmark. It 
 - The worker and gateway block `SIGINT` and `SIGTERM` before starting worker or ORT threads.
 - The HTTP listener runs on a joined thread.
 - On a shutdown signal, the server stops accepting requests, the listener joins, and the worker destroys its batch processor.
-- `BatchProcessor::stop()` is idempotent. It rejects new work and fails every queued promise with `std::runtime_error("batch processor stopped")`. A handler cannot wait forever.
-- Idle keep-alive connections use a 2-second timeout. The loopback tests exit within the 5-second bound even when the gateway has an open keep-alive connection.
+- `BatchProcessor::stop()` is idempotent. It rejects new work and fails every promise still in the queue when stop begins with `std::runtime_error("batch processor stopped")`. A request that was already dequeued may complete. A handler cannot wait forever.
+- Idle keep-alive connections use a 2-second timeout. Manual idle-connection checks exited in about 2 seconds, and the failover test kills a worker while the gateway holds a connection to it.
 - Valid in-flight inference behavior is unchanged.
 
 ### Request validation

@@ -96,7 +96,7 @@ Cycle 5 measured the gateway’s JSON parse/dump of each ~10 KB worker response.
 
 Cycle 7 addressed operational gaps that the image benchmark exposed:
 
-- `BatchProcessor::stop()` now rejects new work and fails every queued promise, so handlers cannot remain blocked after shutdown.
+- `BatchProcessor::stop()` now rejects new work and fails every promise still queued when stop begins, so handlers cannot remain blocked after shutdown. A request already dequeued may complete.
 - Worker and gateway block `SIGINT`/`SIGTERM`, run the HTTP listener on a joined thread, stop it, and exit within the tested 5-second bound. The idle keep-alive timeout is 2 seconds.
 - `POST /infer` validates the JSON object, `request_id`, and numeric finite `input_data` before routing. Invalid client input returns HTTP 400; valid requests and the 500 internal-error path are unchanged.
 - A loopback test kills the worker that owns a hashed input and verifies retry on the healthy worker plus a circuit-breaker failure record.

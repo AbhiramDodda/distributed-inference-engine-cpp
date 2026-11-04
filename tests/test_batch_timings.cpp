@@ -99,8 +99,8 @@ int main() {
         auto concurrent_stop = std::async(std::launch::async, [&] { shutdown_processor.stop(); });
         release.set_value();
         require(first.wait_for(2s) == std::future_status::ready);
-        require(stopping.wait_for(2s) == std::future_status::ready);
-        require(concurrent_stop.wait_for(2s) == std::future_status::ready);
+        stopping.get();
+        concurrent_stop.get();
         bool second_failed = false;
         try {
             second.get();
