@@ -74,7 +74,7 @@ The C++ build in the local verification used the pinned local ORT and dependency
 - The shutdown bound is tested for an idle worker/gateway and one open gateway-to-worker keep-alive connection. A long in-flight inference can extend shutdown up to its inference time; there is no forced cancellation.
 - Validation covers the JSON `/infer` contract. The binary endpoint has separate validation.
 - The failover test uses one injected worker loss, not repeated failures, network partitions, or recovery of the killed worker.
-- The CI job has not been validated on GitHub until the branch is pushed.
+- The CI job passed on [PR #2](https://github.com/althaafsn/distributed-inference-engine-cpp/pull/2) after the branch was pushed. It validates the pushed branch, not a deployment.
 - No production service, credentials, or production data were touched.
 - No TLS, authentication, rate limiting, metrics export, model versioning, or multi-AZ work is included.
 
