@@ -66,4 +66,44 @@ int main() {
     require(a.get().response == 10);
     require(b.get().response == 20);
     paired.stop();
+
+    // Shutdown fails queued requests and rejects new work instead of hanging.
+    {
+        std::promise<void> started;
+        std::promise<void> release;
+        auto release_future = release.get_future().share();
+        BatchProcessor<int, int> shutdown_processor(1, 2s, [&](const std::vector<int>& values) {
+            started.set_value();
+            release_future.wait();
+            return values;
+        });
+        shutdown_processor.start();
+        auto first = std::async(std::launch::async, [&] { return shutdown_processor.process(1); });
+        require(started.get_future().wait_for(2s) == std::future_status::ready);
+        auto second = std::async(std::launch::async, [&] { return shutdown_processor.process(2); });
+        const auto enqueue_deadline = std::chrono::steady_clock::now() + 2s;
+        while (shutdown_processor.getMetrics().total_requests < 2 &&
+               std::chrono::steady_clock::now() < enqueue_deadline) {
+            std::this_thread::yield();
+        }
+        require(shutdown_processor.getMetrics().total_requests == 2);
+        auto stopping = std::async(std::launch::async, [&] { shutdown_processor.stop(); });
+        release.set_value();
+        require(first.wait_for(2s) == std::future_status::ready);
+        require(stopping.wait_for(2s) == std::future_status::ready);
+        bool second_failed = false;
+        try {
+            second.get();
+        } catch (const std::runtime_error&) {
+            second_failed = true;
+        }
+        require(second_failed);
+        bool new_work_rejected = false;
+        try {
+            shutdown_processor.process(3);
+        } catch (const std::runtime_error&) {
+            new_work_rejected = true;
+        }
+        require(new_work_rejected);
+    }
 }
