@@ -1,6 +1,7 @@
 #include "engine_backend.h"
 #include "lru_cache.h"
 #include "batch_processor.h"
+#include "shutdown_signal.h"
 #include "tensor_payload.h"
 #include <algorithm>
 #include <cstdlib>
@@ -262,6 +263,14 @@ int main(int argc, char** argv) {
     }
     
     std::cout << "Using model: " << model_path << std::endl;
+    // Block shutdown signals before ORT starts its thread pools so every thread
+    // inherits the mask. The main thread then waits for a signal explicitly.
+    try {
+        block_shutdown_signals();
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to install shutdown handler: " << e.what() << std::endl;
+        return 1;
+    }
     // Construct the worker (and its engine) up front so a bad ENGINE_BACKEND or
     // a load failure exits cleanly with a message instead of a core dump.
     std::unique_ptr<WorkerNode> worker_ptr;
@@ -351,6 +360,19 @@ int main(int argc, char** argv) {
     std::cout << "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" << std::endl;
     std::cout << "Ready to accept requests!" << std::endl;
     std::cout << std::endl;
-    server.listen("0.0.0.0", port);
+    std::thread server_thread([&server, port] {
+        server.listen("0.0.0.0", port);
+    });
+    server.wait_until_ready();
+    if (!server.is_running()) {
+        std::cerr << "Worker server failed to start on port " << port << std::endl;
+        server_thread.join();
+        return 1;
+    }
+    const int signal_number = wait_for_shutdown_signal();
+    std::cout << "Received signal " << signal_number << ", shutting down" << std::endl;
+    server.stop();
+    server_thread.join();
+    worker_ptr.reset();
     return 0;
 }

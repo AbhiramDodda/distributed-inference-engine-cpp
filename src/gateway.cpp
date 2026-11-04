@@ -1,5 +1,6 @@
 #include "consistent_hash.h"
 #include "circuit_breaker.h"
+#include "shutdown_signal.h"
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -10,6 +11,7 @@
 #include <vector>
 #include <mutex>
 #include <condition_variable>
+#include <thread>
 #include <optional>
 #include <utility>
 #include <cstdint>
@@ -502,6 +504,13 @@ int main(int argc, char** argv) {
         }
     }
 
+    try {
+        block_shutdown_signals();
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to install shutdown handler: " << e.what() << std::endl;
+        return 1;
+    }
+
     Gateway gateway(workers);
     httplib::Server server;
     // Keep response headers and body from waiting on delayed ACKs when the
@@ -574,6 +583,18 @@ int main(int argc, char** argv) {
     std::cout << "Workers: " << workers.size() << std::endl;
     std::cout << "Circuit breakers enabled" << std::endl;
     std::cout << "Ready!" << std::endl;
-    server.listen("0.0.0.0", listen_port);
+    std::thread server_thread([&server, listen_port] {
+        server.listen("0.0.0.0", listen_port);
+    });
+    server.wait_until_ready();
+    if (!server.is_running()) {
+        std::cerr << "Gateway server failed to start on port " << listen_port << std::endl;
+        server_thread.join();
+        return 1;
+    }
+    const int signal_number = wait_for_shutdown_signal();
+    std::cout << "Received signal " << signal_number << ", shutting down" << std::endl;
+    server.stop();
+    server_thread.join();
     return 0;
 }
