@@ -35,3 +35,38 @@ jobs:
           timeout 10s /tmp/test_batch_timings
       - name: Check remote script syntax
         run: bash -n benchmark-aws/remote.sh setup.sh benchmark-aws/multihost/*.sh
+
+  cpp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: recursive
+      - name: Download pinned ONNX Runtime
+        run: |
+          curl -fsSL --retry 2 --connect-timeout 15 --max-time 180 \
+            -o ort.tgz \
+            https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-linux-x64-1.23.2.tgz
+          printf '%s  %s\n' \
+            1fa4dcaef22f6f7d5cd81b28c2800414350c10116f5fdd46a2160082551c5f9b \
+            ort.tgz | sha256sum -c -
+          tar -xzf ort.tgz
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+          -DONNXRUNTIME_INCLUDE_DIR="$PWD/onnxruntime-linux-x64-1.23.2/include" \
+          -DONNXRUNTIME_LIB_DIR="$PWD/onnxruntime-linux-x64-1.23.2/lib"
+      - name: Build
+        run: cmake --build build --parallel 2
+      - name: CTest
+        run: BENCH_MODEL="$PWD/models/resnet50-v2-7.onnx" ctest --test-dir build --output-on-failure
+      - name: Real worker and gateway tests
+        run: |
+          BENCH_WORKER_BIN="$PWD/build/worker_node" \
+          BENCH_GATEWAY_BIN="$PWD/build/gateway" \
+          BENCH_MODEL="$PWD/models/resnet50-v2-7.onnx" \
+          python -m unittest tests.test_instrumented_worker tests.test_gateway_latency \
+            tests.test_graceful_shutdown tests.test_api_validation \
+            tests.test_gateway_failover -v
