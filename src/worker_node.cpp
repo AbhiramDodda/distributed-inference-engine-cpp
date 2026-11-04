@@ -1,6 +1,7 @@
 #include "engine_backend.h"
 #include "lru_cache.h"
 #include "batch_processor.h"
+#include "request_validation.h"
 #include "shutdown_signal.h"
 #include "tensor_payload.h"
 #include <algorithm>
@@ -298,9 +299,15 @@ int main(int argc, char** argv) {
     server.Post("/infer", [&worker](const httplib::Request& req, httplib::Response& res) {
         try {
             auto request = json::parse(req.body);
+            inference::validateInferRequest(request);
             auto response = worker.handleInfer(request);
             
             res.set_content(response.dump(), "application/json");
+        } catch (const inference::ValidationError& e) {
+            json error;
+            error["error"] = e.what();
+            res.status = 400;
+            res.set_content(error.dump(), "application/json");
         } catch (const std::exception& e) {
             json error;
             error["error"] = e.what();

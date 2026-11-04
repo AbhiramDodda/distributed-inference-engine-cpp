@@ -137,6 +137,7 @@ class SourceDeliveryTests(unittest.TestCase):
             "src/gateway.cpp",
             "include/engine_backend.h",
             "include/inference_engine.h",
+            "include/request_validation.h",
             "include/shutdown_signal.h",
             "include/tensor_payload.h",
         ):
@@ -155,6 +156,7 @@ class SourceDeliveryTests(unittest.TestCase):
             self.assertIn("decode_float32_le", patch)
             self.assertIn("infer_tensor", patch)
             self.assertIn("block_shutdown_signals", patch)
+            self.assertIn("validateInferRequest", patch)
 
     def test_other_source_changes_are_not_silently_omitted(self):
         def fake_git(args, **_kwargs):

@@ -36,7 +36,7 @@ BASELINE_SOURCE_FILES = (
     "src/engine_backend.cpp",
     "src/gateway.cpp",
 )
-SOURCE_FILES = BASELINE_SOURCE_FILES + ("include/tensor_payload.h", "include/shutdown_signal.h")
+SOURCE_FILES = BASELINE_SOURCE_FILES + ("include/tensor_payload.h", "include/shutdown_signal.h", "include/request_validation.h")
 
 
 class Tee:

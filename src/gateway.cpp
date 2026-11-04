@@ -1,5 +1,6 @@
 #include "consistent_hash.h"
 #include "circuit_breaker.h"
+#include "request_validation.h"
 #include "shutdown_signal.h"
 #include <algorithm>
 #include <atomic>
@@ -527,9 +528,15 @@ int main(int argc, char** argv) {
     server.Post("/infer", [&gateway](const httplib::Request& req, httplib::Response& res) {
         try {
             auto request = json::parse(req.body);
+            inference::validateInferRequest(request);
             auto response = gateway.routeRequest(request);
             
             res.set_content(response, "application/json");
+        } catch (const inference::ValidationError& e) {
+            json error;
+            error["error"] = e.what();
+            res.status = 400;
+            res.set_content(error.dump(), "application/json");
         } catch (const std::exception& e) {
             json error;
             error["error"] = e.what();

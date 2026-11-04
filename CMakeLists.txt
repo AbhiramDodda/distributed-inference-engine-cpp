@@ -111,4 +111,7 @@ if(BUILD_TESTING)
 
     add_executable(test_tensor_payload tests/test_tensor_payload.cpp)
     add_test(NAME tensor_payload COMMAND test_tensor_payload)
+
+    add_executable(test_request_validation tests/test_request_validation.cpp)
+    add_test(NAME request_validation COMMAND test_request_validation)
 endif()
