@@ -1,6 +1,6 @@
 # Investigation record
 
-Status: **complete for cycles 1–5.** The continuous cycle ledger is [EXPERIMENTS.md](EXPERIMENTS.md); the candidate queue is exhausted within the current single-host, authorization, and budget scope. Independent review remains outstanding; verification is a labeled self-review.
+Status: **complete for cycles 1–7.** The continuous cycle ledger is [EXPERIMENTS.md](EXPERIMENTS.md); the performance candidate queue is exhausted within the current single-host, authorization, and budget scope. Cycle 7 closed the safe-operation gaps found after the image benchmark. Independent review remains outstanding; verification is a labeled self-review.
 
 ## Context and scope
 
@@ -91,6 +91,18 @@ Cycle 3 measured input flatten/pad at 8/18/39/989 µs for batch 1/2/4/32, so the
 Cycle 4 reduced the default batch deadline from 20 ms to 10 ms with a `BATCH_DEADLINE_MS` override. AWS unique p50 fell from 108.0/190.4/360.0 ms to 98.5/181.6/351.5 ms at c1/c2/c4, throughput rose from 9.22/10.48/11.10 to 10.09/10.93/11.36 req/s, and queue-wait p50 fell from about 20.06 ms to 10.06 ms. The cache-hit workload and backend time were unchanged. Details: [EXPERIMENTS.md](EXPERIMENTS.md), [aws-batch-deadline.md](../aws-batch-deadline.md), and `benchmarks/results/2026-11-02-aws-batch-deadline.json`.
 
 Cycle 5 measured the gateway’s JSON parse/dump of each ~10 KB worker response. Forwarding the successful body unchanged cut AWS cache-hit p50 from 1.15/2.17/3.69 ms to 0.85/1.51/2.80 ms and raised cache-hit throughput from 327.7/884.7/953.1 to 367.9/1,246.8/1,264.4 req/s at c1/c2/c4; unique p50 changed by −0.2 to −0.7% and backend time was unchanged. The gateway now trusts the worker’s 200 body rather than re-validating it, which is documented as a reliability tradeoff. Details: [EXPERIMENTS.md](EXPERIMENTS.md), [aws-gateway-passthrough.md](../aws-gateway-passthrough.md), and `benchmarks/results/2026-11-02-aws-gateway-passthrough.json`.
+
+## Production hardening follow-up (cycle 7)
+
+Cycle 7 addressed operational gaps that the image benchmark exposed:
+
+- `BatchProcessor::stop()` now rejects new work and fails every queued promise, so handlers cannot remain blocked after shutdown.
+- Worker and gateway block `SIGINT`/`SIGTERM`, run the HTTP listener on a joined thread, stop it, and exit within the tested 5-second bound. The idle keep-alive timeout is 2 seconds.
+- `POST /infer` validates the JSON object, `request_id`, and numeric finite `input_data` before routing. Invalid client input returns HTTP 400; valid requests and the 500 internal-error path are unchanged.
+- A loopback test kills the worker that owns a hashed input and verifies retry on the healthy worker plus a circuit-breaker failure record.
+- CI has a `cpp` job that builds the real worker/gateway with pinned ONNX Runtime and runs `ctest` and the real-model loopback tests.
+
+Evidence: 70 Python tests passed with 7 intended skips; 4/4 CTest cases passed; 11 real worker/gateway tests passed. These are loopback and CI results, not a deployed-network or production-availability claim. See `docs/production-hardening.md`.
 
 ## Portfolio and repository handoff
 
