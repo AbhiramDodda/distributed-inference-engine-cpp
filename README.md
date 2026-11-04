@@ -31,7 +31,11 @@ The 2026-11-02 campaign used a 500-image ImageNet subset, five pinned ONNX model
 - Worker kill at 40 requests/s: **0 failed requests**, 0 top-1 conflicts, 0.0 output difference.
 - Estimated cost **$3.31 of $10**. No active benchmark resources remain.
 
-These results are not a production-readiness claim. TLS, authentication, rate limiting, graceful shutdown, observability, model versioning, and multi-AZ replacement remain open. See the [full report](docs/autotune-benchmark.md) and the [sanitized summary](benchmarks/results/2026-11-02-autotune-summary.json).
+These results are not a production-readiness claim. TLS, authentication, rate limiting, observability, model versioning, and multi-AZ replacement remain open. See the [full report](docs/autotune-benchmark.md) and the [sanitized summary](benchmarks/results/2026-11-02-autotune-summary.json).
+
+## Production hardening
+
+The worker and gateway now handle `SIGTERM` and `SIGINT` with a bounded shutdown, fail queued batch work instead of leaving handlers blocked, return HTTP 400 for malformed JSON inference requests, and have a loopback worker-failure test. CI builds the real C++ targets with pinned ONNX Runtime and runs the real-model loopback tests. The shutdown and failover evidence is loopback-only. TLS, authentication, rate limiting, metrics export, model versioning, and multi-AZ replacement remain open. See [production hardening](docs/production-hardening.md).
 
 ## Architecture
 

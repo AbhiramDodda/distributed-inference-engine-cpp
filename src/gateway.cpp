@@ -1,5 +1,7 @@
 #include "consistent_hash.h"
 #include "circuit_breaker.h"
+#include "request_validation.h"
+#include "shutdown_signal.h"
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -10,6 +12,7 @@
 #include <vector>
 #include <mutex>
 #include <condition_variable>
+#include <thread>
 #include <optional>
 #include <utility>
 #include <cstdint>
@@ -502,11 +505,21 @@ int main(int argc, char** argv) {
         }
     }
 
+    try {
+        block_shutdown_signals();
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to install shutdown handler: " << e.what() << std::endl;
+        return 1;
+    }
+
     Gateway gateway(workers);
     httplib::Server server;
     // Keep response headers and body from waiting on delayed ACKs when the
     // client reuses a connection.
     server.set_tcp_nodelay(true);
+    // Bound idle keep-alive connections so shutdown does not wait for the
+    // library default of five seconds.
+    server.set_keep_alive_timeout(2);
     // Each gateway handler blocks on a synchronous Post to a worker, so with the
     // default thread pool (hardware_concurrency-1, ~15) the gateway can only keep
     // ~15 requests in flight across the whole cluster -- starving the workers'
@@ -518,9 +531,20 @@ int main(int argc, char** argv) {
     server.Post("/infer", [&gateway](const httplib::Request& req, httplib::Response& res) {
         try {
             auto request = json::parse(req.body);
+            inference::validateInferRequest(request);
             auto response = gateway.routeRequest(request);
             
             res.set_content(response, "application/json");
+        } catch (const nlohmann::json::parse_error& e) {
+            json error;
+            error["error"] = e.what();
+            res.status = 400;
+            res.set_content(error.dump(), "application/json");
+        } catch (const inference::ValidationError& e) {
+            json error;
+            error["error"] = e.what();
+            res.status = 400;
+            res.set_content(error.dump(), "application/json");
         } catch (const std::exception& e) {
             json error;
             error["error"] = e.what();
@@ -574,6 +598,18 @@ int main(int argc, char** argv) {
     std::cout << "Workers: " << workers.size() << std::endl;
     std::cout << "Circuit breakers enabled" << std::endl;
     std::cout << "Ready!" << std::endl;
-    server.listen("0.0.0.0", listen_port);
+    std::thread server_thread([&server, listen_port] {
+        server.listen("0.0.0.0", listen_port);
+    });
+    server.wait_until_ready();
+    if (!server.is_running()) {
+        std::cerr << "Gateway server failed to start on port " << listen_port << std::endl;
+        server_thread.join();
+        return 1;
+    }
+    const int signal_number = wait_for_shutdown_signal();
+    std::cout << "Received signal " << signal_number << ", shutting down" << std::endl;
+    server.stop();
+    server_thread.join();
     return 0;
 }

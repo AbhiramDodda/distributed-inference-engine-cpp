@@ -10,6 +10,7 @@
 #include <chrono>
 #include <future>
 #include <atomic>
+#include <stdexcept>
 
 template<typename Request, typename Response>
 class BatchProcessor {
@@ -34,6 +35,7 @@ public:
 
     void start();
     void stop();
+    bool isRunning() const { return running_.load(); }
     struct Metrics {
         int64_t total_requests;
         int64_t total_batches;
@@ -64,6 +66,7 @@ private:
     BatchCallback callback_;
     std::queue<QueuedRequest> request_queue_;
     std::mutex queue_mutex_;
+    std::mutex stop_mutex_;
     std::condition_variable queue_cv_;
     std::thread worker_thread_;
     std::atomic<bool> running_{false};
@@ -97,10 +100,34 @@ void BatchProcessor<Request, Response>::start() {
 
 template<typename Request, typename Response>
 void BatchProcessor<Request, Response>::stop() {
-    running_ = false;
+    std::lock_guard<std::mutex> stop_lock(stop_mutex_);
+    {
+        std::lock_guard<std::mutex> lock(queue_mutex_);
+        running_ = false;
+    }
     queue_cv_.notify_all();
     if (worker_thread_.joinable()) {
         worker_thread_.join();
+    }
+
+    // The processing loop exits on running_ == false. Any request that reached
+    // the queue after the loop stopped must be failed explicitly; otherwise
+    // its handler would wait forever.
+    std::queue<QueuedRequest> abandoned;
+    {
+        std::lock_guard<std::mutex> lock(queue_mutex_);
+        abandoned.swap(request_queue_);
+    }
+    while (!abandoned.empty()) {
+        QueuedRequest item = std::move(abandoned.front());
+        abandoned.pop();
+        try {
+            item.promise.set_exception(
+                std::make_exception_ptr(std::runtime_error("batch processor stopped"))
+            );
+        } catch (const std::future_error&) {
+            // A promise can be completed only once. Preserve the first result.
+        }
     }
 }
 
@@ -112,6 +139,9 @@ BatchProcessor<Request, Response>::process(const Request& request) {
 
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
+        if (!running_) {
+            throw std::runtime_error("batch processor is stopped");
+        }
         request_queue_.push(QueuedRequest{
             request,
             std::move(promise),
@@ -150,6 +180,7 @@ void BatchProcessor<Request, Response>::processingLoop() {
         queue_cv_.wait_until(lock, deadline, [this] {
             return request_queue_.size() >= max_batch_size_ || !running_;
         });
+        if (!running_) break;
 
         batch.clear();
         while (!request_queue_.empty() && batch.size() < max_batch_size_) {

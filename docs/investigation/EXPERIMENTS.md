@@ -130,6 +130,23 @@ This is the resumable record for [CONTINUOUS-OPTIMIZATION.md](CONTINUOUS-OPTIMIZ
 | Cost | New campaign estimate $3.267; grand total $3.312 of the $10 budget. Cleanup verified: 0 active instances, 0 tagged security groups, 0 tagged volumes. |
 | Limits | 500-image subset, coarse closed-loop sweep, 5-minute holds, one region, Python JSON client, no spare worker in the failover test, no process-pool or gateway-batching implementation. |
 
+## Cycle 7 — production hardening (accepted)
+
+| Field | Record |
+| --- | --- |
+| Hypothesis | The remaining material gaps are operational, not throughput: queued handlers can hang on shutdown, malformed JSON becomes 500s and can trip circuit breakers, failover has no regression test, and CI does not build the real C++ targets. |
+| Baseline | Cycle-6 source at `cba852c`; existing gateway, cache, batching, and ORT backend. |
+| Change | Bounded batch-processor stop; graceful SIGINT/SIGTERM for worker and gateway; JSON request validation with 400; loopback failover test; real C++ CI job with pinned ONNX Runtime. Idle keep-alive timeout lowered to 2 seconds so shutdown does not wait for the library default of 5 seconds. |
+| Shutdown | New worker and gateway tests send SIGTERM and require exit code 0 within 5 seconds. The batch test requires queued work to fail, new work to be rejected, and `stop()` to be idempotent. |
+| Validation | Unit test covers missing/empty/oversized IDs, missing/empty/non-numeric/non-finite inputs. Real HTTP test covers gateway and worker 400 responses; valid request remains 200; circuit-breaker failures stay 0. |
+| Failover | Two local workers and one gateway; kill the worker that owns a hashed input; same input returns 200 from the healthy worker and records a breaker failure. |
+| CI | New `cpp` job initializes pinned submodules, verifies the ORT 1.23.2 tarball SHA-256, builds real targets, runs `ctest`, and runs the real worker/gateway tests. |
+| Verification | Full Python suite: 70 passed, 7 intended skips. `ctest`: 4/4 passed. Real worker/gateway tests: 11 passed. |
+| Decision | Accepted for the tested loopback and CI scope. This closes the safe-operation gaps; it does not make the service production-ready. |
+| Artifacts | `docs/production-hardening.md`, `tests/test_batch_timings.cpp`, `tests/test_graceful_shutdown.py`, `tests/test_api_validation.py`, `tests/test_gateway_failover.py`, `.github/workflows/ci.yml`. |
+| Cost | Local and CI only; $0. |
+| Limits | Loopback only; no long in-flight drain test; one worker-loss injection; no TLS/auth/rate limiting; CI result requires a pushed branch run. |
+
 ## Stop condition and future work
 
 Cycle 6 closes the multi-host capacity item for the tested workload. The remaining constraints are production concerns, not single-variable performance candidates: TLS and authentication, rate limiting and backpressure, graceful shutdown, metrics export, model versioning, multi-AZ replacement, and a long-duration soak.
