@@ -25,9 +25,7 @@ class ApiValidationTests(unittest.TestCase):
         cls.gateway_bin = os.environ.get("BENCH_GATEWAY_BIN")
         cls.model = os.environ.get("BENCH_MODEL")
         if not cls.worker_bin or not cls.gateway_bin or not cls.model:
-            raise unittest.SkipTest(
-                "set BENCH_WORKER_BIN, BENCH_GATEWAY_BIN and BENCH_MODEL"
-            )
+            raise unittest.SkipTest("set BENCH_WORKER_BIN, BENCH_GATEWAY_BIN and BENCH_MODEL")
         cls.worker_port = free_port()
         cls.gateway_port = free_port()
         cls.tmp = tempfile.TemporaryDirectory(prefix="api-validation-")
@@ -98,9 +96,7 @@ class ApiValidationTests(unittest.TestCase):
                 exc.close()
 
     def get_json(self, port, path):
-        with urllib.request.urlopen(
-            f"http://127.0.0.1:{port}{path}", timeout=5
-        ) as response:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=5) as response:
             return json.load(response)
 
     def test_gateway_and_worker_reject_invalid_fields_with_400(self):
@@ -125,9 +121,7 @@ class ApiValidationTests(unittest.TestCase):
         self.assertEqual(body["request_id"], "ok")
 
         stats = self.get_json(self.gateway_port, "/stats")
-        self.assertTrue(
-            all(item["failures"] == 0 for item in stats["circuit_breakers"])
-        )
+        self.assertTrue(all(item["failures"] == 0 for item in stats["circuit_breakers"]))
 
 
 if __name__ == "__main__":

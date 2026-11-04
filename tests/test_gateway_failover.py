@@ -25,9 +25,7 @@ class GatewayFailoverTests(unittest.TestCase):
         cls.gateway_bin = os.environ.get("BENCH_GATEWAY_BIN")
         cls.model = os.environ.get("BENCH_MODEL")
         if not cls.worker_bin or not cls.gateway_bin or not cls.model:
-            raise unittest.SkipTest(
-                "set BENCH_WORKER_BIN, BENCH_GATEWAY_BIN and BENCH_MODEL"
-            )
+            raise unittest.SkipTest("set BENCH_WORKER_BIN, BENCH_GATEWAY_BIN and BENCH_MODEL")
         cls.tmp = tempfile.TemporaryDirectory(prefix="gateway-failover-")
         cls.logs = []
         cls.worker_a_port = free_port()

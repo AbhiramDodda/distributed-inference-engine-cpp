@@ -25,9 +25,7 @@ class GracefulShutdownTests(unittest.TestCase):
         cls.gateway_bin = os.environ.get("BENCH_GATEWAY_BIN")
         cls.model = os.environ.get("BENCH_MODEL")
         if not cls.worker_bin or not cls.gateway_bin or not cls.model:
-            raise unittest.SkipTest(
-                "set BENCH_WORKER_BIN, BENCH_GATEWAY_BIN and BENCH_MODEL"
-            )
+            raise unittest.SkipTest("set BENCH_WORKER_BIN, BENCH_GATEWAY_BIN and BENCH_MODEL")
 
     def wait_url(self, url):
         deadline = time.monotonic() + 60
